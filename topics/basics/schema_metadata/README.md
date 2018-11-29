@@ -48,11 +48,8 @@ overhead. This can be useful to improve the startup performance of the
 short-lived sessions or an environment where up-to-date schema metadata is
 unnecessary.
 
-**Important**: This also disables token-aware routing because it depends on
-schema metadata.
-
 ```c
 /* Disable schema metdata */
 cass_cluster_set_use_schema(cluster, cass_false);
 ```
-[`cass_session_get_schema_meta()`]: http://datastax.github.io/cpp-driver/api/CassSession/#cass-session-get-schema-meta
+[`cass_session_get_schema_meta()`]: http://datastax.github.io/cpp-driver/api/struct.CassSession/#cass-session-get-schema-meta

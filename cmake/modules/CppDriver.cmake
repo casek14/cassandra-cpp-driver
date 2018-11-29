@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 2.6.4)
 # Includes
 #-----------
 include(FindPackageHandleStandardArgs)
+include(CheckSymbolExists)
 
 #-----------
 # Policies
@@ -87,7 +88,7 @@ endmacro()
 #------------------------
 
 # Minimum supported version of Boost
-set(CASS_MINIMUM_BOOST_VERSION 1.55.0)
+set(CASS_MINIMUM_BOOST_VERSION 1.59.0)
 
 #------------------------
 # CassUseBoost
@@ -135,9 +136,16 @@ macro(CassUseBoost)
 
   # Determine if Boost components are available for test executables
   if(CASS_BUILD_UNIT_TESTS OR CASS_BUILD_INTEGRATION_TESTS)
-    find_package(Boost ${CASS_MINIMUM_BOOST_VERSION} COMPONENTS chrono date_time filesystem log log_setup system regex thread unit_test_framework)
+    find_package(Boost ${CASS_MINIMUM_BOOST_VERSION} COMPONENTS chrono system thread unit_test_framework)
     if(NOT Boost_FOUND)
-      message(FATAL_ERROR "Boost [chrono, date_time, filesystem, log, log_setup, system, regex, thread, and unit_test_framework] are required to build tests")
+      # Ensure Boost was not found due to minimum version requirement
+      set(CASS_FOUND_BOOST_VERSION "${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}.${Boost_SUBMINOR_VERSION}")
+      if((CASS_FOUND_BOOST_VERSION VERSION_GREATER "${CASS_MINIMUM_BOOST_VERSION}")
+        OR (CASS_FOUND_BOOST_VERSION VERSION_EQUAL "${CASS_MINIMUM_BOOST_VERSION}"))
+        message(FATAL_ERROR "Boost [chrono, system, thread, and unit_test_framework] are required to build tests")
+      else()
+        message(FATAL_ERROR "Boost v${CASS_FOUND_BOOST_VERSION} Found: v${CASS_MINIMUM_BOOST_VERSION} or greater required")
+      endif()
     endif()
 
     # Assign Boost include and libraries
@@ -146,49 +154,9 @@ macro(CassUseBoost)
   endif()
 
   # Determine if additional Boost definitions are required for driver/executables
-  set(CASS_FOUND_BOOST_VERSION "${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}.${Boost_SUBMINOR_VERSION}")
-  if((CASS_FOUND_BOOST_VERSION VERSION_GREATER "1.56.0") OR (CASS_FOUND_BOOST_VERSION VERSION_EQUAL "1.56.0"))
-    if(NOT WIN32)
-      # Handle explicit initialization warning in atomic/details/casts
-      add_definitions(-Wno-missing-field-initializers)
-    endif()
-  else()
-    # Handle redefinition warning of BOOST_NO_CXX11_RVALUE_REFERENCES
-    add_definitions(-DBOOST_NO_CXX11_RVALUE_REFERENCES)
-  endif()
-endmacro()
-
-#------------------------
-# CassUseSparseHash
-#
-# Add includes required for using SparseHash.
-#
-# Input: CASS_INCLUDES
-# Output: CASS_INCLUDES
-#------------------------
-macro(CassUseSparseHash)
-  # Setup the paths and hints for sparsehash
-  set(_SPARSEHASH_ROOT_PATHS "${PROJECT_SOURCE_DIR}/lib/sparsehash/")
-  set(_SPARSEHASH_ROOT_HINTS ${SPARSEHASH_ROOT_DIR} $ENV{SPARSEHASH_ROOT_DIR})
   if(NOT WIN32)
-    set(_SPARSEHASH_ROOT_PATHS ${_SPARSEHASH_ROOT_PATHS} "/usr/" "/usr/local/")
-  endif()
-  set(_SPARSEHASH_ROOT_HINTS_AND_PATHS
-    HINTS ${_SPARSEHASH_ROOT_HINTS}
-    PATHS ${_SPARSEHASH_ROOT_PATHS})
-
-  # Ensure sparsehash headers were found
-  find_path(SPARSEHASH_INCLUDE_DIR
-    NAMES google/dense_hash_map
-    HINTS ${_SPARSEHASH_INCLUDE_DIR} ${_SPARSEHASH_ROOT_HINTS_AND_PATHS}
-    PATH_SUFFIXES include)
-  find_package_handle_standard_args(SparseJash "Could NOT find sparsehash, try to set the path to the sparsehash root folder in the system variable SPARSEHASH_ROOT_DIR"
-    SPARSEHASH_INCLUDE_DIR)
-
-  set(CASS_INCLUDES ${CASS_INCLUDES} ${SPARSEHASH_INCLUDE_DIR})
-
-  if (SPARSEHASH_INCLUDE_DIR)
-    add_definitions("-DCASS_USE_SPARSEHASH")
+    # Handle explicit initialization warning in atomic/details/casts
+    add_definitions(-Wno-missing-field-initializers)
   endif()
 endmacro()
 
@@ -339,10 +307,10 @@ macro(CassSetCompilerFlags)
   # Enable specific cass::Atomic implementation
   if(CASS_USE_BOOST_ATOMIC)
     message(STATUS "Using boost::atomic implementation for atomic operations")
-    add_definitions(-DCASS_USE_BOOST_ATOMIC)
+    set(HAVE_BOOST_ATOMIC 1)
   elseif(CASS_USE_STD_ATOMIC)
     message(STATUS "Using std::atomic implementation for atomic operations")
-    add_definitions(-DCASS_USE_STD_ATOMIC)
+    set(HAVE_STD_ATOMIC 1)
   endif()
 
   # Assign compiler specific flags
@@ -375,7 +343,6 @@ macro(CassSetCompilerFlags)
     add_definitions(/wd4800) # Performance warning due to automatic compiler casting from int to bool
 
     # Add preprocessor definitions for proper compilation
-    add_definitions(-D_WIN32_WINNT=0x0501)      # Required for winsock (pre Windows XP wspiapi.h only)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)  # Remove warnings for not using safe functions (TODO: Fix codebase to be more secure for Visual Studio)
     add_definitions(-DNOMINMAX)                 # Does not define min/max macros
 
@@ -453,10 +420,16 @@ endmacro()
 # Output: CASS_INCLUDES
 #------------------------
 macro(CassAddIncludes)
-  set(INCLUDES ${CASS_INCLUDES} ${CASS_SOURCE_DIR}/include)
-  set(INCLUDES ${INCLUDES} ${CASS_SOURCE_DIR}/src)
-  set(INCLUDES ${INCLUDES} ${CASS_SOURCE_DIR}/src/ssl)
-  set(CASS_INCLUDES ${INCLUDES} ${CASS_SOURCE_DIR}/src/third_party/rapidjson)
+  set(CASS_INCLUDES
+      ${CASS_SOURCE_DIR}/include
+      ${CASS_SOURCE_DIR}/src
+      ${CASS_SOURCE_DIR}/src/ssl
+      ${CASS_SOURCE_DIR}/src/third_party/rapidjson
+      ${CASS_SOURCE_DIR}/src/third_party/rapidjson
+      ${CASS_SOURCE_DIR}/src/third_party/sparsehash/src
+      ${CASS_INCLUDES}
+      )
+  add_subdirectory(${CASS_SOURCE_DIR}/src/third_party/sparsehash)
 endmacro()
 
 #------------------------
@@ -472,6 +445,20 @@ macro(CassFindSourceFiles)
   file(GLOB API_HEADER_FILES ${CASS_SOURCE_DIR}/include/*.h)
   file(GLOB INC_FILES ${CASS_SOURCE_DIR}/src/*.hpp)
   file(GLOB SRC_FILES ${CASS_SOURCE_DIR}/src/*.cpp)
+
+  if(${APPLE})
+    list(REMOVE_ITEM SRC_FILES
+      "${CASS_SOURCE_DIR}/src/get_time-unix.cpp"
+      "${CASS_SOURCE_DIR}/src/get_time-win.cpp")
+  elseif(${UNIX})
+    list(REMOVE_ITEM SRC_FILES
+      "${CASS_SOURCE_DIR}/src/get_time-mac.cpp"
+      "${CASS_SOURCE_DIR}/src/get_time-win.cpp")
+  elseif(${WIN32})
+    list(REMOVE_ITEM SRC_FILES
+      "${CASS_SOURCE_DIR}/src/get_time-mac.cpp"
+      "${CASS_SOURCE_DIR}/src/get_time-unix.cpp")
+  endif()
 
   # Determine atomic library to include
   if(CASS_USE_BOOST_ATOMIC)
@@ -506,7 +493,7 @@ macro(CassFindSourceFiles)
     set(SRC_FILES ${SRC_FILES}
       ${CASS_SOURCE_DIR}/src/ssl/ssl_openssl_impl.cpp
       ${CASS_SOURCE_DIR}/src/ssl/ring_buffer_bio.cpp)
-    add_definitions(-DCASS_USE_OPENSSL)
+    set(HAVE_OPENSSL 1)
   else()
     set(INC_FILES ${INC_FILES}
       ${CASS_SOURCE_DIR}/src/ssl/ssl_no_impl.hpp)
@@ -521,4 +508,13 @@ macro(CassFindSourceFiles)
     string(REPLACE "${CMAKE_SOURCE_DIR}/" "" LOG_FILE_ ${SRC_FILE})
     set_source_files_properties(${SRC_FILE} PROPERTIES COMPILE_FLAGS -DLOG_FILE_=\\\"${LOG_FILE_}\\\")
   endforeach()
+endmacro()
+
+macro(CassConfigure)
+  check_symbol_exists(SO_NOSIGPIPE "sys/socket.h;sys/types.h" HAVE_NOSIGPIPE)
+  check_symbol_exists(sigtimedwait "signal.h" HAVE_SIGTIMEDWAIT)
+  if (NOT WIN32 AND NOT HAVE_NOSIGPIPE AND NOT HAVE_SIGTIMEDWAIT)
+    message(WARNING "Unable to handle SIGPIPE on your platform")
+  endif()
+  configure_file(${CASS_SOURCE_DIR}/cassconfig.hpp.in ${CASS_SOURCE_DIR}/src/cassconfig.hpp)
 endmacro()

@@ -395,6 +395,17 @@ BOOST_AUTO_TEST_CASE(basic_types)
     CassDecimal value(varint, sizeof(varint), scale);
     insert_single_value<CassDecimal>(CASS_VALUE_TYPE_DECIMAL, value);
   }
+
+  if ((version.major_version >= 3 && version.minor_version >= 10) || version.major_version >= 4) {
+    CassDuration value = CassDuration(0, 0, 0);
+    insert_single_value<CassDuration>(CASS_VALUE_TYPE_DURATION, value);
+
+    value = CassDuration(1, 2, 3);
+    insert_single_value<CassDuration>(CASS_VALUE_TYPE_DURATION, value);
+
+    value = CassDuration(-1, -2, -3);
+    insert_single_value<CassDuration>(CASS_VALUE_TYPE_DURATION, value);
+  }
 }
 
 BOOST_AUTO_TEST_CASE(min_max)
@@ -438,6 +449,9 @@ BOOST_AUTO_TEST_CASE(null)
   insert_null_value<CassBytes>(CASS_VALUE_TYPE_BLOB);
   insert_null_value<cass_bool_t>(CASS_VALUE_TYPE_BOOLEAN);
   insert_null_value<CassDecimal>(CASS_VALUE_TYPE_DECIMAL);
+  if ((version.major_version >= 3 && version.minor_version >= 10) || version.major_version >= 4) {
+    insert_null_value<CassDuration>(CASS_VALUE_TYPE_DURATION);
+  }
   insert_null_value<cass_double_t>(CASS_VALUE_TYPE_DOUBLE);
   insert_null_value<cass_float_t>(CASS_VALUE_TYPE_FLOAT);
   insert_null_value<cass_int32_t>(CASS_VALUE_TYPE_INT);
@@ -537,7 +551,7 @@ BOOST_AUTO_TEST_CASE(rows_in_rows_out)
     // Create insert statement for bound parameters
     std::string insert_query(boost::str(boost::format("INSERT INTO %s (tweet_id, t1, t2, t3) VALUES (?, ?, ?, ?);") % test_utils::SIMPLE_TABLE));
 
-    const size_t num_rows = 100000;
+    const size_t num_rows = 1000;
     for (size_t i = 0; i < num_rows; ++i) {
       test_utils::CassStatementPtr statement(cass_statement_new(insert_query.c_str(), 4));
 
@@ -642,7 +656,7 @@ BOOST_AUTO_TEST_CASE(empty_results)
 /**
  * Unset Parameters
  *
- * This test ensures that unset paremeters return an error for C* 2.2 or less
+ * This test ensures that unset parameters return an error for C* 2.2 or less
  * and correctly uses the UNSET values for C*2.2 or greater.
  *
  * @since 2.2.0-beta1

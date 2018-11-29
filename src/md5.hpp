@@ -23,6 +23,7 @@
 #include "macros.hpp"
 
 #include <uv.h>
+#include <stdint.h>
 
 namespace cass {
 

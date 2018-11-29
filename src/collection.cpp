@@ -17,8 +17,9 @@
 #include "collection.hpp"
 
 #include "constants.hpp"
-#include "external_types.hpp"
+#include "external.hpp"
 #include "macros.hpp"
+#include "tuple.hpp"
 #include "user_type_value.hpp"
 
 #include <string.h>
@@ -38,7 +39,7 @@ CassCollection* cass_collection_new_from_data_type(const CassDataType* data_type
     return NULL;
   }
   cass::Collection* collection
-      = new cass::Collection(cass::SharedRefPtr<const cass::DataType>(data_type),
+      = new cass::Collection(cass::DataType::ConstPtr(data_type),
                              item_count);
   collection->inc_ref();
   return CassCollection::to(collection);
@@ -77,6 +78,9 @@ CASS_COLLECTION_APPEND(bytes,
 CASS_COLLECTION_APPEND(decimal,
                        THREE_PARAMS_(const cass_byte_t* varint, size_t varint_size, int scale),
                        cass::CassDecimal(varint, varint_size, scale))
+CASS_COLLECTION_APPEND(duration,
+                       THREE_PARAMS_(cass_int32_t months, cass_int32_t days, cass_int32_t nanos),
+                       cass::CassDuration(months, days, nanos))
 
 #undef CASS_COLLECTION_APPEND
 

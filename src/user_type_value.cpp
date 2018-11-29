@@ -18,7 +18,8 @@
 
 #include "collection.hpp"
 #include "macros.hpp"
-#include "external_types.hpp"
+#include "external.hpp"
+#include "tuple.hpp"
 #include "utils.hpp"
 
 #include <string.h>
@@ -31,7 +32,7 @@ CassUserType* cass_user_type_new_from_data_type(const CassDataType* data_type) {
   }
   return CassUserType::to(
         new cass::UserTypeValue(
-          cass::SharedRefPtr<const cass::DataType>(data_type)));
+          cass::DataType::ConstPtr(data_type)));
 }
 
 void cass_user_type_free(CassUserType* user_type) {
@@ -77,6 +78,9 @@ CASS_USER_TYPE_SET(bytes,
 CASS_USER_TYPE_SET(decimal,
                    THREE_PARAMS_(const cass_byte_t* varint, size_t varint_size, int scale),
                    cass::CassDecimal(varint, varint_size, scale))
+CASS_USER_TYPE_SET(duration,
+                   THREE_PARAMS_(cass_int32_t months, cass_int32_t days, cass_int32_t nanos),
+                   cass::CassDuration(months, days, nanos))
 
 #undef CASS_USER_TYPE_SET
 

@@ -17,9 +17,10 @@
 #include "data_type.hpp"
 
 #include "collection.hpp"
-#include "external_types.hpp"
+#include "external.hpp"
 #include "tuple.hpp"
 #include "types.hpp"
+#include "utils.hpp"
 #include "user_type_value.hpp"
 
 #include <string.h>
@@ -62,9 +63,9 @@ CassDataType* cass_data_type_new(CassValueType type) {
 }
 
 CassDataType* cass_data_type_new_from_existing(const CassDataType* data_type) {
-  cass::DataType* copy = data_type->copy();
+  cass::DataType::Ptr copy = data_type->copy();
   copy->inc_ref();
-  return CassDataType::to(copy);
+  return CassDataType::to(copy.get());
 }
 
 CassDataType* cass_data_type_new_tuple(size_t item_count) {
@@ -75,9 +76,9 @@ CassDataType* cass_data_type_new_tuple(size_t item_count) {
 }
 
 CassDataType* cass_data_type_new_udt(size_t field_count) {
-  cass::UserType* user_type = new cass::UserType(field_count);
-  user_type->inc_ref();
-  return CassDataType::to(user_type);
+  cass::DataType* data_type = new cass::UserType(field_count);
+  data_type->inc_ref();
+  return CassDataType::to(data_type);
 }
 
 const CassDataType* cass_data_type_sub_data_type(const CassDataType* data_type,
@@ -297,18 +298,18 @@ CassError cass_data_type_add_sub_type(CassDataType* data_type,
       if (composite_type->types().size() >= 1) {
         return CASS_ERROR_LIB_BAD_PARAMS;
       }
-      composite_type->types().push_back(cass::SharedRefPtr<const cass::DataType>(sub_data_type));
+      composite_type->types().push_back(cass::DataType::ConstPtr(sub_data_type));
       break;
 
     case CASS_VALUE_TYPE_MAP:
       if (composite_type->types().size() >= 2) {
         return CASS_ERROR_LIB_BAD_PARAMS;
       }
-      composite_type->types().push_back(cass::SharedRefPtr<const cass::DataType>(sub_data_type));
+      composite_type->types().push_back(cass::DataType::ConstPtr(sub_data_type));
       break;
 
     case CASS_VALUE_TYPE_TUPLE:
-      composite_type->types().push_back(cass::SharedRefPtr<const cass::DataType>(sub_data_type));
+      composite_type->types().push_back(cass::DataType::ConstPtr(sub_data_type));
       break;
 
     default:
@@ -339,7 +340,7 @@ CassError cass_data_type_add_sub_type_by_name_n(CassDataType* data_type,
       = static_cast<cass::UserType*>(data_type->from());
 
   user_type->add_field(std::string(name, name_length),
-                       cass::SharedRefPtr<const cass::DataType>(sub_data_type));
+                       cass::DataType::ConstPtr(sub_data_type));
 
   return CASS_OK;
 
@@ -347,7 +348,7 @@ CassError cass_data_type_add_sub_type_by_name_n(CassDataType* data_type,
 
 CassError cass_data_type_add_sub_value_type(CassDataType* data_type,
                                             CassValueType sub_value_type) {
-  cass::SharedRefPtr<const cass::DataType> sub_data_type(
+  cass::DataType::ConstPtr sub_data_type(
         new cass::DataType(sub_value_type));
   return cass_data_type_add_sub_type(data_type,
                                      CassDataType::to(sub_data_type.get()));
@@ -357,7 +358,7 @@ CassError cass_data_type_add_sub_value_type(CassDataType* data_type,
 CassError cass_data_type_add_sub_value_type_by_name(CassDataType* data_type,
                                                     const char* name,
                                                     CassValueType sub_value_type) {
-  cass::SharedRefPtr<const cass::DataType> sub_data_type(
+  cass::DataType::ConstPtr sub_data_type(
         new cass::DataType(sub_value_type));
   return cass_data_type_add_sub_type_by_name(data_type, name,
                                              CassDataType::to(sub_data_type.get()));
@@ -367,7 +368,7 @@ CassError cass_data_type_add_sub_value_type_by_name_n(CassDataType* data_type,
                                                       const char* name,
                                                       size_t name_length,
                                                       CassValueType sub_value_type) {
-  cass::SharedRefPtr<const cass::DataType> sub_data_type(
+  cass::DataType::ConstPtr sub_data_type(
         new cass::DataType(sub_value_type));
   return cass_data_type_add_sub_type_by_name_n(data_type, name, name_length,
                                                CassDataType::to(sub_data_type.get()));
@@ -383,66 +384,73 @@ namespace cass {
 
 const DataType::ConstPtr DataType::NIL;
 
-void NativeDataTypes::init_class_names() {
-  if (!by_class_names_.empty()) return;
-  by_class_names_["org.apache.cassandra.db.marshal.AsciiType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_ASCII));
-  by_class_names_["org.apache.cassandra.db.marshal.BooleanType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_BOOLEAN));
-  by_class_names_["org.apache.cassandra.db.marshal.ByteType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TINY_INT));
-  by_class_names_["org.apache.cassandra.db.marshal.BytesType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_BLOB));
-  by_class_names_["org.apache.cassandra.db.marshal.CounterColumnType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_COUNTER));
-  by_class_names_["org.apache.cassandra.db.marshal.DateType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TIMESTAMP));
-  by_class_names_["org.apache.cassandra.db.marshal.DecimalType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_DECIMAL));
-  by_class_names_["org.apache.cassandra.db.marshal.DoubleType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_DOUBLE));
-  by_class_names_["org.apache.cassandra.db.marshal.FloatType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_FLOAT));
-  by_class_names_["org.apache.cassandra.db.marshal.InetAddressType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_INET));
-  by_class_names_["org.apache.cassandra.db.marshal.Int32Type"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_INT));
-  by_class_names_["org.apache.cassandra.db.marshal.IntegerType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_INT));
-  by_class_names_["org.apache.cassandra.db.marshal.LongType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_BIGINT));
-  by_class_names_["org.apache.cassandra.db.marshal.ShortType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_SMALL_INT));
-  by_class_names_["org.apache.cassandra.db.marshal.SimpleDateType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_DATE));
-  by_class_names_["org.apache.cassandra.db.marshal.TimeType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TIME));
-  by_class_names_["org.apache.cassandra.db.marshal.TimestampType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TIMESTAMP));
-  by_class_names_["org.apache.cassandra.db.marshal.TimeUUIDType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TIMEUUID));
-  by_class_names_["org.apache.cassandra.db.marshal.UTF8Type"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TEXT));
-  by_class_names_["org.apache.cassandra.db.marshal.UUIDType"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_UUID));
+DataType::ConstPtr DataType::create_by_class(StringRef name) {
+  CassValueType value_type = ValueTypes::by_class(name);
+  if (value_type == CASS_VALUE_TYPE_UNKNOWN) {
+    return DataType::NIL;
+  }
+  return ConstPtr(new DataType(value_type));
 }
 
-const DataType::ConstPtr& NativeDataTypes::by_class_name(const std::string& name) const {
-  DataTypeMap::const_iterator i = by_class_names_.find(name);
-  if (i == by_class_names_.end()) return DataType::NIL;
+DataType::ConstPtr DataType::create_by_cql(StringRef name) {
+  CassValueType value_type = ValueTypes::by_cql(name);
+  if (value_type == CASS_VALUE_TYPE_UNKNOWN) {
+    return DataType::NIL;
+  }
+  return ConstPtr(new DataType(value_type));
+}
+
+ValueTypes::HashMap ValueTypes::value_types_by_class_;
+ValueTypes::HashMap ValueTypes::value_types_by_cql_;
+
+static ValueTypes __value_types__; // Initializer
+
+ValueTypes::ValueTypes() {
+  value_types_by_class_.set_empty_key("");
+  value_types_by_cql_.set_empty_key("");
+
+#define XX_VALUE_TYPE(name, type, cql, klass)                   \
+    if (strlen(klass) > 0) value_types_by_class_[klass] = name; \
+    if (strlen(cql) > 0) value_types_by_cql_[cql] = name;
+
+  CASS_VALUE_TYPE_MAPPING(XX_VALUE_TYPE)
+#undef XX_VALUE_TYPE
+}
+
+CassValueType ValueTypes::by_class(StringRef name) {
+  HashMap::const_iterator i = value_types_by_class_.find(name);
+  if (i == value_types_by_class_.end()) {
+    return CASS_VALUE_TYPE_UNKNOWN;
+  }
   return i->second;
 }
 
-void NativeDataTypes::init_cql_names() {
-  if (!by_cql_names_.empty()) return;
-  by_cql_names_["ascii"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_ASCII));
-  by_cql_names_["bigint"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_BIGINT));
-  by_cql_names_["blob"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_BLOB));
-  by_cql_names_["boolean"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_BOOLEAN));
-  by_cql_names_["counter"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_COUNTER));
-  by_cql_names_["date"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_DATE));
-  by_cql_names_["decimal"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_DECIMAL));
-  by_cql_names_["double"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_DOUBLE));
-  by_cql_names_["float"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_FLOAT));
-  by_cql_names_["inet"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_INET));
-  by_cql_names_["int"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_INT));
-  by_cql_names_["smallint"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_SMALL_INT));
-  by_cql_names_["time"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TIME));
-  by_cql_names_["timestamp"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TIMESTAMP));
-  by_cql_names_["timeuuid"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TIMEUUID));
-  by_cql_names_["tinyint"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TINY_INT));
-  by_cql_names_["text"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_TEXT));
-  by_cql_names_["uuid"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_UUID));
-  by_cql_names_["varchar"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_VARCHAR));
-  by_cql_names_["varint"] = DataType::ConstPtr(new DataType(CASS_VALUE_TYPE_VARINT));
-}
-
-const DataType::ConstPtr& NativeDataTypes::by_cql_name(const std::string& name) const {
-  DataTypeMap::const_iterator i = by_cql_names_.find(name);
-  if (i == by_cql_names_.end()) return DataType::NIL;
+CassValueType ValueTypes::by_cql(StringRef name) {
+  HashMap::const_iterator i = value_types_by_cql_.find(name);
+  if (i == value_types_by_cql_.end()) {
+    return CASS_VALUE_TYPE_UNKNOWN;
+  }
   return i->second;
 }
 
+const DataType::ConstPtr& SimpleDataTypeCache::by_value_type(uint16_t value_type) {
+  if (value_type == CASS_VALUE_TYPE_UNKNOWN ||
+      value_type == CASS_VALUE_TYPE_CUSTOM ||
+      value_type == CASS_VALUE_TYPE_LIST ||
+      value_type == CASS_VALUE_TYPE_MAP ||
+      value_type == CASS_VALUE_TYPE_SET ||
+      value_type == CASS_VALUE_TYPE_UDT ||
+      value_type == CASS_VALUE_TYPE_TUPLE ||
+      value_type >= CASS_VALUE_TYPE_LAST_ENTRY) {
+    return DataType::NIL;
+  }
+  DataType::ConstPtr& data_type = cache_[value_type];
+  if (!data_type) {
+    data_type = DataType::ConstPtr(
+                  new DataType(static_cast<CassValueType>(value_type)));
+  }
+  return data_type;
+}
 
 bool cass::IsValidDataType<const Collection*>::operator()(const Collection* value,
                                                           const DataType::ConstPtr& data_type) const {

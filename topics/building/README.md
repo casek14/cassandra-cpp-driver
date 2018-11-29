@@ -21,7 +21,7 @@ dependencies being installed.
 
 ### Test Dependencies
 
-- [boost 1.55+](http://www.boost.org)
+- [boost 1.59+](http://www.boost.org)
 - [libssh2](http://www.libssh2.org) (optional)
 
 ## Linux/OS X
@@ -33,19 +33,11 @@ The driver has been built using both Clang (Ubuntu 12.04/14.04 and OS X) and GCC
 #### CentOS/RHEL
 
 ##### Additional Requirements for CentOS/RHEL 5
-CentOS/RHEL 5 does not contain `git` in its repositories; however RepoForge
-(formerly RPMforge) has a RPM for this dependency. It can be found
-[here](http://pkgs.repoforge.org/git/).
-
-###### Download the Appropriate RepoForge Release Package
-- [32-bit](http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el5.rf.i386.rpm)
-- [64-bit](http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el5.rf.x86_64.rpm)
-
-###### Install Key and RPM Package
+CentOS/RHEL 5 does not contain `git` in its core repositories; however, the [EPEL] has
+this dependency.
 
 ```bash
-sudo rpm --import http://apt.sw.be/RPM-GPG-KEY.dag.txt
-sudo rpm -i rpmforge-release-0.5.3-1.el5.rf.*.rpm
+sudo yum -y install epel-release
 ```
 
 ##### Dependencies and libuv Installation
@@ -53,9 +45,9 @@ sudo rpm -i rpmforge-release-0.5.3-1.el5.rf.*.rpm
 ```bash
 sudo yum install automake cmake gcc-c++ git libtool openssl-devel wget
 pushd /tmp
-wget http://dist.libuv.org/dist/v1.7.5/libuv-v1.7.5.tar.gz
-tar xzf libuv-v1.7.5.tar.gz
-pushd libuv-v1.7.5
+wget http://dist.libuv.org/dist/v1.11.0/libuv-v1.11.0.tar.gz
+tar xzf libuv-v1.11.0.tar.gz
+pushd libuv-v1.11.0
 sh autogen.sh
 ./configure
 sudo make install
@@ -122,7 +114,7 @@ make
 #### Obtaining Test Dependencies
 
 ##### CentOS/RHEL
-CentOS/RHEL does not contain Boost v1.55+ libraries in its repositories; however
+CentOS/RHEL does not contain Boost v1.59+ libraries in its repositories; however
 these can be easily installed from source. Ensure previous version of Boost has
 been removed by executing the command `sudo yum remove boost*` before
 proceeding.
@@ -130,10 +122,10 @@ proceeding.
 ```bash
 sudo yum install libssh2-devel
 pushd /tmp
-wget http://sourceforge.net/projects/boost/files/boost/1.59.0/boost_1_59_0.tar.gz/download -O boost_1_59_0.tar.gz
-tar xzf boost_1_59_0.tar.gz
-pushd boost_1_59_0
-./bootstrap.sh --with-libraries=atomic,chrono,date_time,log,program_options,random,regex,system,thread,test
+wget http://sourceforge.net/projects/boost/files/boost/1.63.0/boost_1_63_0.tar.gz/download -O boost_1_63_0.tar.gz
+tar xzf boost_1_63_0.tar.gz
+pushd boost_1_63_0
+./bootstrap.sh --with-libraries=atomic,chrono,system,thread,test
 sudo ./b2 cxxflags="-fPIC" install
 popd
 popd
@@ -149,21 +141,19 @@ brew install boost libssh2
 ```
 
 ##### Ubuntu
-
-###### Additional Requirements for Ubuntu 12.04
-Ubuntu 12.04 does not contain Boost v1.55+ C++ libraries in its repositories;
-however it can be obtained from the Boost PPA which can be found
-[here](https://launchpad.net/~boost-latest/+archive/ubuntu/ppa).
+Ubuntu does not contain Boost v1.59+ libraries in its repositories; however
+these can be easily installed from source.
 
 ```bash
-sudo add-apt-repository ppa:boost-latest/ppa
-sudo apt-get update
-```
-
-##### Install Dependencies
-
-```bash
-sudo apt-get install libboost1.55-all-dev libssh2-1-dev
+sudo apt-get install libssh2-1-dev
+pushd /tmp
+wget http://sourceforge.net/projects/boost/files/boost/1.63.0/boost_1_63_0.tar.gz/download -O boost_1_63_0.tar.gz
+tar xzf boost_1_63_0.tar.gz
+pushd boost_1_63_0
+./bootstrap.sh --with-libraries=atomic,chrono,system,thread,test
+sudo ./b2 install
+popd
+popd
 ```
 
 #### Building the Driver with the Tests
@@ -302,29 +292,31 @@ driver dependencies will also be copied (e.g. C:\myproject\dependencies\libs)
 ### Test Dependencies and Building the Tests (_NOT REQUIRED_)
 
 #### Obtaining Test Dependencies
-Boost v1.55+ is the only external dependency that will need to be obtained in
+Boost v1.59+ is the only external dependency that will need to be obtained in
 order to build the unit and integration tests.
 
 To simplify the process; pre-built binaries can be obtained
-[here](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/).
+[here](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/).
 Ensure the proper Visual Studio (or Windows SDK) version and architecture is
 obtained and select from the following list:
 
 - Visual Studio 2010 (Windows SDK 7.1)
- - Boost v1.59 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-10.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-10.0-64.exe/download)
+ - Boost v1.63.0 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-10.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-10.0-64.exe/download)
 - Visual Studio 2012 (Windows SDK 8.0)
- - Boost v1.59 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-11.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-11.0-64.exe/download)
+ - Boost v1.63.0 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-11.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-11.0-64.exe/download)
 - Visual Studio 2013 (Windows SDK 8.1)
- - Boost v1.59 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-12.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-12.0-64.exe/download)
+ - Boost v1.63.0 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-12.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-12.0-64.exe/download)
 - Visual Studio 2015 (Windows SDK 10.0)
- - Boost v1.59 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-14.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-14.0-64.exe/download)
+ - Boost v1.63.0 [32-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-14.0-32.exe/download)/[64-bit](http://sourceforge.net/projects/boost/files/boost-binaries/1.63.0/boost_1_63_0-msvc-14.0-64.exe/download)
 
 #### Building the Driver with the Tests
 
 ```dos
 VC_BUILD.BAT --STATIC --ENABLE-TESTS <ABSOLUTE-PATH-TO-BOOST>
 
-[e.g. C:\local\boost_1_59_0]
+[e.g. C:\local\boost_1_63_0]
 ```
  **NOTE:** When enabling tests, --USE-BOOST-ATOMIC will use the Boost atomic
  implementation supplied by <ABSOLUTE-PATH-TO-BOOST>
+
+[EPEL]: https://fedoraproject.org/wiki/EPEL

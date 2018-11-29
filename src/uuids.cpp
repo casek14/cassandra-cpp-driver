@@ -22,7 +22,7 @@
 #include "md5.hpp"
 #include "serialization.hpp"
 #include "scoped_lock.hpp"
-#include "external_types.hpp"
+#include "external.hpp"
 
 #include <stdio.h>
 #include <ctype.h>
@@ -121,7 +121,7 @@ CassError cass_uuid_from_string_n(const char* str,
   const char* pos = str;
   char buf[16];
 
-  static const char hex_to_half_byte[256] = {
+  static const signed char hex_to_half_byte[256] = {
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
     -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,
@@ -212,6 +212,10 @@ UuidGen::UuidGen()
       }
       uv_free_cpu_info(cpu_infos, cpu_count);
     }
+
+    // Tack on the pid
+    int32_t pid = get_pid();
+    md5.update(reinterpret_cast<const uint8_t*>(&pid), 4);
 
     uint8_t hash[16];
     md5.final(hash);

@@ -18,12 +18,13 @@
 #define __CASS_SCHEMA_METADATA_HPP_INCLUDED__
 
 #include "copy_on_write_ptr.hpp"
+#include "external.hpp"
+#include "host.hpp"
 #include "iterator.hpp"
 #include "macros.hpp"
 #include "ref_counted.hpp"
 #include "scoped_lock.hpp"
 #include "scoped_ptr.hpp"
-#include "token_map.hpp"
 #include "data_type.hpp"
 #include "value.hpp"
 
@@ -97,14 +98,6 @@ private:
   typename Collection::const_iterator end_;
 };
 
-struct MetadataConfig {
-  MetadataConfig()
-    : protocol_version(0) { }
-  int protocol_version;
-  VersionNumber cassandra_version;
-  NativeDataTypes native_types;
-};
-
 class MetadataField {
 public:
   typedef std::map<std::string, MetadataField> Map;
@@ -116,7 +109,7 @@ public:
 
   MetadataField(const std::string& name,
                 const Value& value,
-                const SharedRefPtr<RefBuffer>& buffer)
+                const RefBuffer::Ptr& buffer)
     : name_(name)
     , value_(value)
     , buffer_(buffer) { }
@@ -132,7 +125,7 @@ public:
 private:
   std::string name_;
   Value value_;
-  SharedRefPtr<RefBuffer> buffer_;
+  RefBuffer::Ptr buffer_;
 };
 
 class MetadataFieldIterator : public Iterator {
@@ -166,8 +159,8 @@ public:
   }
 
 protected:
-  const Value* add_field(const SharedRefPtr<RefBuffer>& buffer, const Row* row, const std::string& name);
-  void add_field(const SharedRefPtr<RefBuffer>& buffer, const Value& value, const std::string& name);
+  const Value* add_field(const RefBuffer::Ptr& buffer, const Row* row, const std::string& name);
+  void add_field(const RefBuffer::Ptr& buffer, const Value& value, const std::string& name);
   void add_json_list_field(int version, const Row* row, const std::string& name);
   const Value* add_json_map_field(int version, const Row* row, const std::string& name);
 
@@ -208,10 +201,10 @@ public:
     DataType::ConstPtr type;
   };
 
-  FunctionMetadata(const MetadataConfig& config,
+  FunctionMetadata(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache,
                    const std::string& name, const Value* signature,
                    KeyspaceMetadata* keyspace,
-                   const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+                   const RefBuffer::Ptr& buffer, const Row* row);
 
   const std::string& simple_name() const { return simple_name_; }
   const Argument::Vec& args() const { return args_; }
@@ -241,10 +234,10 @@ public:
   typedef std::map<std::string, Ptr> Map;
   typedef std::vector<Ptr> Vec;
 
-  AggregateMetadata(const MetadataConfig& config,
+  AggregateMetadata(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache,
                     const std::string& name, const Value* signature,
                     KeyspaceMetadata* keyspace,
-                    const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+                    const RefBuffer::Ptr& buffer, const Row* row);
 
   const std::string& simple_name() const { return simple_name_; }
   const DataType::Vec arg_types() const { return arg_types_; }
@@ -279,12 +272,12 @@ public:
     , type_(CASS_INDEX_TYPE_UNKNOWN) { }
 
   static IndexMetadata::Ptr from_row(const std::string& index_name,
-                                     const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+                                     const RefBuffer::Ptr& buffer, const Row* row);
   void update(StringRef index_type, const Value* options);
 
-  static IndexMetadata::Ptr from_legacy(const MetadataConfig& config,
+  static IndexMetadata::Ptr from_legacy(int protocol_version,
                                         const std::string& index_name, const ColumnMetadata* column,
-                                        const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+                                        const RefBuffer::Ptr& buffer, const Row* row);
   void update_legacy(StringRef index_type, const ColumnMetadata* column, const Value* options);
 
 
@@ -324,10 +317,10 @@ public:
     , data_type_(data_type)
     , is_reversed_(false) { }
 
-  ColumnMetadata(const MetadataConfig& config,
+  ColumnMetadata(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache,
                  const std::string& name,
                  KeyspaceMetadata* keyspace,
-                 const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+                 const RefBuffer::Ptr& buffer, const Row* row);
 
   CassColumnType type() const { return type_; }
   int32_t position() const { return position_; }
@@ -360,8 +353,8 @@ public:
     const ColumnMetadata* column() const { return impl_.item().get(); }
   };
 
-  TableMetadataBase(const MetadataConfig& config,
-                    const std::string& name, const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+  TableMetadataBase(int protocol_version, const VersionNumber& cassandra_version,
+                    const std::string& name, const RefBuffer::Ptr& buffer, const Row* row);
 
   virtual ~TableMetadataBase() { }
 
@@ -374,7 +367,7 @@ public:
   const ColumnMetadata* get_column(const std::string& name) const;
   void add_column(const ColumnMetadata::Ptr& column);
   void clear_columns();
-  void build_keys_and_sort(const MetadataConfig& config);
+  void build_keys_and_sort(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache);
 
 protected:
   ColumnMetadata::Vec columns_;
@@ -395,10 +388,10 @@ public:
 
   static const ViewMetadata::Ptr NIL;
 
-  ViewMetadata(const MetadataConfig& config,
+  ViewMetadata(int protocol_version, const VersionNumber& cassandra_version,
                TableMetadata* table,
                const std::string& name,
-               const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+               const RefBuffer::Ptr& buffer, const Row* row);
 
   const TableMetadata* base_table() const { return base_table_; }
   TableMetadata* base_table() { return base_table_; }
@@ -473,8 +466,8 @@ public:
     const IndexMetadata* index() const { return impl_.item().get(); }
   };
 
-  TableMetadata(const MetadataConfig& config, const std::string& name,
-                const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+  TableMetadata(int protocol_version, const VersionNumber& cassandra_version, const std::string& name,
+                const RefBuffer::Ptr& buffer, const Row* row);
 
   const ViewMetadata::Vec& views() const { return views_; }
   const IndexMetadata::Vec& indexes() const { return indexes_; }
@@ -490,7 +483,7 @@ public:
   void add_index(const IndexMetadata::Ptr& index);
   void clear_indexes();
 
-  void key_aliases(const NativeDataTypes& native_types, KeyAliases* output) const;
+  void key_aliases(SimpleDataTypeCache& cache, KeyAliases* output) const;
 
 private:
   ViewMetadata::Vec views_;
@@ -539,8 +532,8 @@ public:
     , functions_(new FunctionMetadata::Map)
     , aggregates_(new AggregateMetadata::Map) { }
 
-  void update(const MetadataConfig& config,
-              const SharedRefPtr<RefBuffer>& buffer, const Row* row);
+  void update(int protocol_version, const VersionNumber& cassandra_version,
+              const RefBuffer::Ptr& buffer, const Row* row);
 
   const FunctionMetadata::Map& functions() const { return *functions_; }
   const UserType::Map& user_types() const { return *user_types_; }
@@ -636,16 +629,16 @@ public:
     uv_mutex_destroy(&mutex_);
   }
 
-  SchemaSnapshot schema_snapshot() const;
+  SchemaSnapshot schema_snapshot(int protocol_version, const VersionNumber& cassandra_version) const;
 
-  void update_keyspaces(ResultResponse* result);
-  void update_tables(ResultResponse* result);
-  void update_views(ResultResponse* result);
-  void update_columns(ResultResponse* result);
-  void update_indexes(ResultResponse* result);
-  void update_user_types(ResultResponse* result);
-  void update_functions(ResultResponse* result);
-  void update_aggregates(ResultResponse* result);
+  void update_keyspaces(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+  void update_tables(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+  void update_views(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+  void update_columns(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+  void update_indexes(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+  void update_user_types(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+  void update_functions(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+  void update_aggregates(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
 
   void drop_keyspace(const std::string& keyspace_name);
   void drop_table_or_view(const std::string& keyspace_name, const std::string& table_or_view_name);
@@ -655,29 +648,13 @@ public:
 
   // This clears and allows updates to the back buffer while preserving
   // the front buffer for snapshots.
-  void clear_and_update_back();
+  void clear_and_update_back(const VersionNumber& cassandra_version);
 
   // This swaps the back buffer to the front and makes incremental updates
   // happen directly to the front buffer.
   void swap_to_back_and_update_front();
 
   void clear();
-
-  void set_protocol_version(int version) {
-    config_.protocol_version = version;
-  }
-
-  const VersionNumber& cassandra_version() const { return config_.cassandra_version; }
-  void set_cassandra_version(const VersionNumber& cassandra_version) {
-    config_.cassandra_version = cassandra_version;
-  }
-
-  void set_partitioner(const std::string& partitioner_class) { token_map_.set_partitioner(partitioner_class); }
-  void update_host(SharedRefPtr<Host>& host, const TokenStringList& tokens) { token_map_.update_host(host, tokens); }
-  void build() { token_map_.build(); }
-  void remove_host(SharedRefPtr<Host>& host) { token_map_.remove_host(host); }
-
-  const TokenMap& token_map() const { return token_map_; }
 
 private:
   bool is_front_buffer() const { return updating_ == &front_; }
@@ -690,15 +667,15 @@ private:
 
     const KeyspaceMetadata::MapPtr& keyspaces() const { return keyspaces_; }
 
-    void update_keyspaces(const MetadataConfig& config, ResultResponse* result, KeyspaceMetadata::Map& updates);
-    void update_tables(const MetadataConfig& config, ResultResponse* result);
-    void update_views(const MetadataConfig& config, ResultResponse* result);
-    void update_columns(const MetadataConfig& config, ResultResponse* result);
-    void update_legacy_indexes(const MetadataConfig& config, ResultResponse* result);
-    void update_indexes(const MetadataConfig& config, ResultResponse* result);
-    void update_user_types(const MetadataConfig& config, ResultResponse* result);
-    void update_functions(const MetadataConfig& config, ResultResponse* result);
-    void update_aggregates(const MetadataConfig& config, ResultResponse* result);
+    void update_keyspaces(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+    void update_tables(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+    void update_views(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+    void update_columns(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache, ResultResponse* result);
+    void update_legacy_indexes(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+    void update_indexes(int protocol_version, const VersionNumber& cassandra_version, ResultResponse* result);
+    void update_user_types(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache, ResultResponse* result);
+    void update_functions(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache, ResultResponse* result);
+    void update_aggregates(int protocol_version, const VersionNumber& cassandra_version, SimpleDataTypeCache& cache, ResultResponse* result);
 
     void drop_keyspace(const std::string& keyspace_name);
     void drop_table_or_view(const std::string& keyspace_name, const std::string& table_or_view_name);
@@ -733,20 +710,24 @@ private:
   // This lock prevents partial snapshots when updating metadata
   mutable uv_mutex_t mutex_;
 
-  // Only used internally on a single thread so it doesn't currently use
-  // copy-on-write. When this is exposed externally it needs to be
-  // moved into the InternalData class and made to use copy-on-write.
-  TokenMap token_map_;
-
   // Only used internally on a single thread, there's
   // no need for copy-on-write.
-  MetadataConfig config_;
+  SimpleDataTypeCache cache_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Metadata);
 };
 
 } // namespace cass
+
+EXTERNAL_TYPE(cass::Metadata::SchemaSnapshot, CassSchemaMeta)
+EXTERNAL_TYPE(cass::KeyspaceMetadata, CassKeyspaceMeta)
+EXTERNAL_TYPE(cass::TableMetadata, CassTableMeta)
+EXTERNAL_TYPE(cass::ViewMetadata, CassMaterializedViewMeta)
+EXTERNAL_TYPE(cass::ColumnMetadata, CassColumnMeta)
+EXTERNAL_TYPE(cass::IndexMetadata, CassIndexMeta)
+EXTERNAL_TYPE(cass::FunctionMetadata, CassFunctionMeta)
+EXTERNAL_TYPE(cass::AggregateMetadata, CassAggregateMeta)
 
 #endif
 

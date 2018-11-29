@@ -36,7 +36,7 @@ struct AthenticationTests {
     ccm->kill_cluster();
     ccm->update_cluster_configuration("authenticator", "PasswordAuthenticator");
     ccm->start_cluster("-Dcassandra.superuser_setup_delay_ms=0");
-    test_utils::initialize_contact_points(cluster.get(), CCM::Bridge::get_ip_prefix("config.txt"), 1, 0);
+    test_utils::initialize_contact_points(cluster.get(), CCM::Bridge::get_ip_prefix("config.txt"), 1);
   }
 
   ~AthenticationTests() {
@@ -110,16 +110,18 @@ BOOST_AUTO_TEST_CASE(empty_credentials)
 
 BOOST_AUTO_TEST_CASE(bad_credentials)
 {
-  const char* expected_error
-      = "Username and/or password are incorrect";
+  std::string expected_error = "Username and/or password are incorrect";
+  if (version >= "3.10") {
+    expected_error = "Provided username invalid and/or password are incorrect";
+  }
   // Handle deprecated and removed protocol versions [CASSANDRA-10146]
   // https://issues.apache.org/jira/browse/CASSANDRA-10146
   if (version < "2.2.0") {
-    invalid_credentials(1, "invalid", "invalid", expected_error, CASS_ERROR_SERVER_BAD_CREDENTIALS);
-    invalid_credentials(2, "invalid", "invalid", expected_error, CASS_ERROR_SERVER_BAD_CREDENTIALS);
+    invalid_credentials(1, "invalid", "invalid", expected_error.c_str(), CASS_ERROR_SERVER_BAD_CREDENTIALS);
+    invalid_credentials(2, "invalid", "invalid", expected_error.c_str(), CASS_ERROR_SERVER_BAD_CREDENTIALS);
   }
-  invalid_credentials(3, "invalid", "invalid", expected_error, CASS_ERROR_SERVER_BAD_CREDENTIALS);
-  invalid_credentials(4, "invalid", "invalid", expected_error, CASS_ERROR_SERVER_BAD_CREDENTIALS);
+  invalid_credentials(3, "invalid", "invalid", expected_error.c_str(), CASS_ERROR_SERVER_BAD_CREDENTIALS);
+  invalid_credentials(4, "invalid", "invalid", expected_error.c_str(), CASS_ERROR_SERVER_BAD_CREDENTIALS);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

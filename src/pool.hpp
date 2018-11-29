@@ -23,24 +23,21 @@
 #include "metrics.hpp"
 #include "ref_counted.hpp"
 #include "request.hpp"
+#include "request_callback.hpp"
 #include "request_handler.hpp"
 #include "scoped_ptr.hpp"
 #include "timer.hpp"
 
-#include <algorithm>
-#include <functional>
-#include <set>
-#include <string>
-
 namespace cass {
 
 class IOWorker;
-class RequestHandler;
 class Config;
 
 class Pool : public RefCounted<Pool>
            , public Connection::Listener {
 public:
+  typedef SharedRefPtr<Pool> Ptr;
+
   enum PoolState {
     POOL_STATE_NEW,
     POOL_STATE_CONNECTING,
@@ -59,13 +56,15 @@ public:
   void delayed_connect();
   void close(bool cancel_reconnect = false);
 
-  bool write(Connection* connection, RequestHandler* request_handler);
+  bool write(Connection* connection, const SpeculativeExecution::Ptr& speculative_execution);
   void flush();
 
-  void wait_for_connection(RequestHandler* request_handler);
+  void wait_for_connection(const SpeculativeExecution::Ptr& speculative_execution);
   Connection* borrow_connection();
 
   const Host::ConstPtr& host() const { return host_; }
+  uv_loop_t* loop() { return loop_; }
+  const Config& config() const { return config_; }
 
   bool is_initial_connection() const { return is_initial_connection_; }
   bool is_ready() const { return state_ == POOL_STATE_READY; }
@@ -76,7 +75,8 @@ public:
   bool is_critical_failure() const {
     return error_code_ == Connection::CONNECTION_ERROR_INVALID_PROTOCOL ||
         error_code_ == Connection::CONNECTION_ERROR_AUTH ||
-        error_code_ == Connection::CONNECTION_ERROR_SSL;
+        error_code_ == Connection::CONNECTION_ERROR_SSL_HANDSHAKE ||
+        error_code_ == Connection::CONNECTION_ERROR_SSL_VERIFY;
   }
 
   bool cancel_reconnect() const { return cancel_reconnect_; }
@@ -84,8 +84,7 @@ public:
   void return_connection(Connection* connection);
 
 private:
-  void add_pending_request(RequestHandler* request_handler);
-  void remove_pending_request(RequestHandler* request_handler);
+  void remove_pending_request(SpeculativeExecution* speculative_execution);
   void set_is_available(bool is_available);
 
   void maybe_notify_ready();
@@ -106,7 +105,6 @@ private:
   Connection* find_least_busy();
 
 private:
-  typedef std::set<Connection*> ConnectionSet;
   typedef std::vector<Connection*> ConnectionVec;
 
   IOWorker* io_worker_;
@@ -118,8 +116,8 @@ private:
   PoolState state_;
   Connection::ConnectionError error_code_;
   ConnectionVec connections_;
-  ConnectionSet connections_pending_;
-  List<Handler> pending_requests_;
+  ConnectionVec pending_connections_;
+  List<RequestCallback> pending_requests_;
   int available_connection_count_;
   bool is_available_;
   bool is_initial_connection_;

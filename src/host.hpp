@@ -31,6 +31,7 @@
 #include <math.h>
 #include <set>
 #include <sstream>
+#include <stdint.h>
 #include <vector>
 
 namespace cass {
@@ -99,10 +100,10 @@ public:
   class StateListener {
   public:
     virtual ~StateListener() { }
-    virtual void on_add(const SharedRefPtr<Host>& host) = 0;
-    virtual void on_remove(const SharedRefPtr<Host>& host) = 0;
-    virtual void on_up(const SharedRefPtr<Host>& host) = 0;
-    virtual void on_down(const SharedRefPtr<Host>& host) = 0;
+    virtual void on_add(const Ptr& host) = 0;
+    virtual void on_remove(const Ptr& host) = 0;
+    virtual void on_up(const Ptr& host) = 0;
+    virtual void on_down(const Ptr& host) = 0;
   };
 
   enum HostState {
@@ -113,6 +114,8 @@ public:
 
   Host(const Address& address, bool mark)
       : address_(address)
+      , rack_id_(0)
+      , dc_id_(0)
       , mark_(mark)
       , state_(ADDED)
       , address_string_(address.to_string()) { }
@@ -138,6 +141,13 @@ public:
   void set_rack_and_dc(const std::string& rack, const std::string& dc) {
     rack_ = rack;
     dc_ = dc;
+  }
+
+  uint32_t rack_id() const { return rack_id_; }
+  uint32_t dc_id() const { return dc_id_; }
+  void set_rack_and_dc_ids(uint32_t rack_id, uint32_t dc_id) {
+    rack_id_ = rack_id;
+    dc_id_ = dc_id;
   }
 
   const std::string& listen_address() const { return listen_address_; }
@@ -219,6 +229,8 @@ private:
   }
 
   Address address_;
+  uint32_t rack_id_;
+  uint32_t dc_id_;
   bool mark_;
   Atomic<HostState> state_;
   std::string address_string_;
@@ -234,14 +246,19 @@ private:
   DISALLOW_COPY_AND_ASSIGN(Host);
 };
 
-typedef std::map<Address, SharedRefPtr<Host> > HostMap;
-typedef std::pair<Address, SharedRefPtr<Host> > HostPair;
-typedef std::vector<SharedRefPtr<Host> > HostVec;
+typedef std::map<Address, Host::Ptr> HostMap;
+struct GetHost {
+  typedef std::pair<Address, Host::Ptr> Pair;
+  Host::Ptr operator()(const Pair& pair) const {
+    return pair.second;
+  }
+};
+typedef std::pair<Address, Host::Ptr> HostPair;
+typedef std::vector<Host::Ptr> HostVec;
 typedef CopyOnWritePtr<HostVec> CopyOnWriteHostVec;
 
-void copy_hosts(const HostMap& from_hosts, CopyOnWriteHostVec& to_hosts);
-void add_host(CopyOnWriteHostVec& hosts, const SharedRefPtr<Host>& host);
-void remove_host(CopyOnWriteHostVec& hosts, const SharedRefPtr<Host>& host);
+void add_host(CopyOnWriteHostVec& hosts, const Host::Ptr& host);
+void remove_host(CopyOnWriteHostVec& hosts, const Host::Ptr& host);
 
 } // namespace cass
 

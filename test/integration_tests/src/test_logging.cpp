@@ -47,7 +47,7 @@ BOOST_AUTO_TEST_CASE(logging_callback)
 
   {
     test_utils::CassClusterPtr cluster(cass_cluster_new());
-    test_utils::initialize_contact_points(cluster.get(), ccm->get_ip_prefix(), 1, 0);
+    test_utils::initialize_contact_points(cluster.get(), ccm->get_ip_prefix(), 1);
     test_utils::CassSessionPtr session(test_utils::create_session(cluster.get()));
   }
 
@@ -80,7 +80,7 @@ BOOST_AUTO_TEST_CASE(logging_connection_error_reduced)
     test_utils::CassLog::set_expected_log_level(CASS_LOG_ERROR);
 
     test_utils::CassClusterPtr cluster(cass_cluster_new());
-    test_utils::initialize_contact_points(cluster.get(), ccm->get_ip_prefix(), 1, 0);
+    test_utils::initialize_contact_points(cluster.get(), ccm->get_ip_prefix(), 1);
     test_utils::CassSessionPtr session(cass_session_new());
     test_utils::CassFuturePtr connect_future(cass_session_connect(session.get(), cluster.get()));
     cass_future_error_code(connect_future.get());
@@ -118,7 +118,7 @@ BOOST_AUTO_TEST_CASE(logging_pool_error_reduced)
   test_utils::CassLog::set_expected_log_level(CASS_LOG_ERROR);
 
   // Ensure the cluster is not running
-  if (!ccm->create_cluster()) {
+  if (!ccm->create_cluster(2)) {
     ccm->stop_cluster();
   }
 
@@ -127,14 +127,13 @@ BOOST_AUTO_TEST_CASE(logging_pool_error_reduced)
     cass_cluster_set_connection_heartbeat_interval(cluster.get(), 1);
     cass_cluster_set_connection_idle_timeout(cluster.get(), 1);
     cass_cluster_set_request_timeout(cluster.get(), 1000);
-    test_utils::initialize_contact_points(cluster.get(), ccm->get_ip_prefix(), 1, 0);
+    test_utils::initialize_contact_points(cluster.get(), ccm->get_ip_prefix(), 1);
     test_utils::CassSessionPtr session(cass_session_new());
     ccm->start_cluster();
+    ccm->pause_node(2);
 
-    // Create a connection error by pausing the node during async connection (ERROR)
     test_utils::CassFuturePtr connect_future(cass_session_connect(session.get(), cluster.get()));
-    ccm->pause_node(1);
-    cass_future_error_code(connect_future.get());
+    BOOST_CHECK_EQUAL(cass_future_error_code(connect_future.get()), CASS_OK);
     BOOST_CHECK_EQUAL(test_utils::CassLog::message_count(), 1);
 
     // Sleep to allow the connection pool failure on the paused node (WARN)

@@ -30,8 +30,9 @@
 #include <assert.h>
 
 #include "atomic.hpp"
-#include "utils.hpp"
+#include "cassconfig.hpp"
 #include "macros.hpp"
+#include "utils.hpp"
 
 namespace cass {
 
@@ -80,7 +81,7 @@ public:
    // before storing the data into the queue causing the data in the queue
    // not to be consumed. This fence ensures that the load happens after the
    // data has been store in the queue.
-#if defined(CASS_USE_BOOST_ATOMIC) || defined(CASS_USE_STD_ATOMIC)
+#if defined(HAVE_BOOST_ATOMIC) || defined(HAVE_STD_ATOMIC)
     atomic_thread_fence(MEMORY_ORDER_SEQ_CST);
 #endif
   }

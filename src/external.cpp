@@ -14,8 +14,11 @@
   limitations under the License.
 */
 
-#include "external_types.hpp"
+#include "external.hpp"
 
+#include "cassandra.h"
+
+#include <string.h>
 #include <uv.h>
 
 #define NUM_SECONDS_PER_DAY (24U * 60U * 60U)
@@ -29,7 +32,7 @@ const char* cass_error_desc(CassError error) {
 #define XX(source, _, code, desc) \
   case CASS_ERROR(source, code):  \
     return desc;
-    CASS_ERROR_MAP(XX)
+    CASS_ERROR_MAPPING(XX)
 #undef XX
     default:
       return "";
@@ -41,7 +44,7 @@ const char* cass_log_level_string(CassLogLevel log_level) {
 #define XX(log_level, desc) \
   case log_level:           \
     return desc;
-    CASS_LOG_LEVEL_MAP(XX)
+    CASS_LOG_LEVEL_MAPPING(XX)
 #undef XX
     default:
       return "";
@@ -53,7 +56,7 @@ const char* cass_consistency_string(CassConsistency consistency) {
 #define XX(consistency, desc) \
   case consistency:           \
     return desc;
-    CASS_CONSISTENCY_MAP(XX)
+    CASS_CONSISTENCY_MAPPING(XX)
 #undef XX
     default:
       return "";
@@ -65,7 +68,7 @@ const char* cass_write_type_string(CassWriteType write_type) {
 #define XX(write_type, desc) \
   case write_type:           \
     return desc;
-    CASS_WRITE_TYPE_MAP(XX)
+    CASS_WRITE_TYPE_MAPPING(XX)
 #undef XX
     default:
       return "";
@@ -136,7 +139,7 @@ cass_int64_t cass_time_from_epoch(cass_int64_t epoch_secs) {
 }
 
 cass_int64_t cass_date_time_to_epoch(cass_uint32_t date, cass_int64_t time) {
-  return (date - CASS_DATE_EPOCH) * NUM_SECONDS_PER_DAY +
+  return (static_cast<cass_uint64_t>(date) - CASS_DATE_EPOCH) * NUM_SECONDS_PER_DAY +
       time / CASS_TIME_NANOSECONDS_PER_SECOND;
 }
 

@@ -18,9 +18,11 @@
 #define __CASS_DATA_TYPE_HPP_INCLUDED__
 
 #include "cassandra.h"
+#include "external.hpp"
 #include "hash_table.hpp"
 #include "macros.hpp"
 #include "ref_counted.hpp"
+#include "small_dense_hash_map.hpp"
 #include "types.hpp"
 
 #include <map>
@@ -65,12 +67,17 @@ inline bool equals_both_not_empty(const std::string& s1,
 
 class DataType : public RefCounted<DataType> {
 public:
+  typedef SharedRefPtr<DataType> Ptr;
   typedef SharedRefPtr<const DataType> ConstPtr;
   typedef std::vector<ConstPtr> Vec;
 
   static const DataType::ConstPtr NIL;
 
-  DataType(CassValueType value_type, bool is_frozen = false)
+  static ConstPtr create_by_class(StringRef name);
+  static ConstPtr create_by_cql(StringRef name);
+
+  DataType(CassValueType value_type = CASS_VALUE_TYPE_UNKNOWN,
+           bool is_frozen = false)
     : value_type_(value_type)
     , is_frozen_(is_frozen) { }
 
@@ -103,36 +110,15 @@ public:
     }
   }
 
-  virtual DataType* copy() const {
-    return new DataType(value_type_);
+  virtual DataType::Ptr copy() const {
+    return Ptr(new DataType(value_type_));
   }
 
   virtual std::string to_string() const {
     switch (value_type_) {
-      case CASS_VALUE_TYPE_ASCII: return "ascii";
-      case CASS_VALUE_TYPE_BIGINT: return "bigint";
-      case CASS_VALUE_TYPE_BLOB: return "blob";
-      case CASS_VALUE_TYPE_BOOLEAN: return "boolean";
-      case CASS_VALUE_TYPE_COUNTER: return "counter";
-      case CASS_VALUE_TYPE_DECIMAL: return "decimal";
-      case CASS_VALUE_TYPE_DOUBLE: return "double";
-      case CASS_VALUE_TYPE_FLOAT: return "float";
-      case CASS_VALUE_TYPE_INT: return "int";
-      case CASS_VALUE_TYPE_TEXT: return "text";
-      case CASS_VALUE_TYPE_TIMESTAMP: return "timestamp";
-      case CASS_VALUE_TYPE_UUID: return "uuid";
-      case CASS_VALUE_TYPE_VARCHAR: return "varchar";
-      case CASS_VALUE_TYPE_VARINT: return "varint";
-      case CASS_VALUE_TYPE_TIMEUUID: return "timeuuid";
-      case CASS_VALUE_TYPE_INET: return "inet";
-      case CASS_VALUE_TYPE_DATE: return "date";
-      case CASS_VALUE_TYPE_TIME: return "time";
-      case CASS_VALUE_TYPE_SMALL_INT: return "smallint";
-      case CASS_VALUE_TYPE_TINY_INT: return "tinyint";
-      case CASS_VALUE_TYPE_LIST: return "list";
-      case CASS_VALUE_TYPE_MAP: return "map";
-      case CASS_VALUE_TYPE_SET: return "set";
-      case CASS_VALUE_TYPE_TUPLE: return "tuple";
+#define XX_VALUE_TYPE(name, type, cql, klass) case name: return cql;
+  CASS_VALUE_TYPE_MAPPING(XX_VALUE_TYPE)
+#undef XX_VALUE_TYPE
       default: return "";
     }
   }
@@ -168,12 +154,12 @@ public:
     if (data_type->value_type() != CASS_VALUE_TYPE_CUSTOM) {
       return false;
     }
-    const SharedRefPtr<const CustomType>& custom_type(data_type);
+    const ConstPtr& custom_type(data_type);
     return equals_both_not_empty(class_name_, custom_type->class_name_);
   }
 
-  virtual DataType* copy() const {
-    return new CustomType(class_name_);
+  virtual DataType::Ptr copy() const {
+    return DataType::Ptr(new CustomType(class_name_));
   }
 
   virtual std::string to_string() const {
@@ -265,8 +251,8 @@ public:
     return true;
   }
 
-  virtual DataType* copy() const {
-    return new CollectionType(value_type(), types_, is_frozen());
+  virtual DataType::Ptr copy() const {
+    return DataType::Ptr(new CollectionType(value_type(), types_, is_frozen()));
   }
 
 public:
@@ -312,7 +298,7 @@ public:
       return false;
     }
 
-    const SharedRefPtr<const TupleType>& tuple_type(data_type);
+    const ConstPtr& tuple_type(data_type);
 
     // Only compare sub-types if both have sub-types
     if(!types_.empty() && !tuple_type->types_.empty()) {
@@ -329,8 +315,8 @@ public:
     return true;
   }
 
-  virtual DataType* copy() const {
-    return new TupleType(types_, is_frozen());
+  virtual DataType::Ptr copy() const {
+    return DataType::Ptr(new TupleType(types_, is_frozen()));
   }
 };
 
@@ -431,8 +417,8 @@ public:
     return true;
   }
 
-  virtual DataType* copy() const {
-    return new UserType(keyspace_, type_name_, fields_.entries(), is_frozen());
+  virtual DataType::Ptr copy() const {
+    return DataType::Ptr(new UserType(keyspace_, type_name_, fields_.entries(), is_frozen()));
   }
 
   virtual std::string to_string() const {
@@ -449,18 +435,37 @@ private:
   CaseInsensitiveHashTable<Field> fields_;
 };
 
-class NativeDataTypes {
+class ValueTypes {
 public:
-  void init_class_names();
-  const DataType::ConstPtr& by_class_name(const std::string& name) const;
+  ValueTypes();
 
-  void init_cql_names();
-  const DataType::ConstPtr& by_cql_name(const std::string& name) const;
+  static CassValueType by_class(StringRef name);
+  static CassValueType by_cql(StringRef name);
 
 private:
-  typedef std::map<std::string, DataType::ConstPtr> DataTypeMap;
-  DataTypeMap by_class_names_;
-  DataTypeMap by_cql_names_;
+  typedef SmallDenseHashMap<StringRef, CassValueType,
+                            CASS_VALUE_TYPE_LAST_ENTRY, // Max size
+                            StringRefIHash,
+                            StringRefIEquals> HashMap;
+
+  static HashMap value_types_by_class_;
+  static HashMap value_types_by_cql_;
+};
+
+class SimpleDataTypeCache {
+public:
+  const DataType::ConstPtr& by_class(StringRef name) {
+    return by_value_type(ValueTypes::by_class(name));
+  }
+
+  const DataType::ConstPtr& by_cql(StringRef name) {
+    return by_value_type(ValueTypes::by_cql(name));
+  }
+
+  const DataType::ConstPtr& by_value_type(uint16_t value_type);
+
+private:
+  DataType::ConstPtr cache_[CASS_VALUE_TYPE_LAST_ENTRY];
 };
 
 template<class T>
@@ -575,6 +580,13 @@ struct IsValidDataType<CassDecimal> {
 };
 
 template<>
+struct IsValidDataType<CassDuration> {
+  bool operator()(CassDuration, const DataType::ConstPtr& data_type) const {
+    return data_type->value_type() == CASS_VALUE_TYPE_DURATION;
+  }
+};
+
+template<>
 struct IsValidDataType<const Collection*> {
   bool operator()(const Collection* value, const DataType::ConstPtr& data_type) const;
 };
@@ -590,5 +602,7 @@ struct IsValidDataType<const UserTypeValue*> {
 };
 
 } // namespace cass
+
+EXTERNAL_TYPE(cass::DataType, CassDataType)
 
 #endif

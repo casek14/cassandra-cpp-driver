@@ -16,14 +16,16 @@
 
 #include "session.hpp"
 
+#include "batch_request.hpp"
+#include "cluster.hpp"
 #include "config.hpp"
 #include "constants.hpp"
 #include "logger.hpp"
 #include "prepare_request.hpp"
-#include "request_handler.hpp"
 #include "scoped_lock.hpp"
+#include "statement.hpp"
 #include "timer.hpp"
-#include "external_types.hpp"
+#include "external.hpp"
 
 extern "C" {
 
@@ -36,7 +38,7 @@ void cass_session_free(CassSession* session) {
   // hang indefinitely otherwise. This causes minimal delay
   // if the session is already closed.
   cass::SharedRefPtr<cass::Future> future(new cass::SessionFuture());
-  session->close_async(future.get(), true);
+  session->close_async(future);
   future->wait();
 
   delete session->from();
@@ -59,17 +61,17 @@ CassFuture* cass_session_connect_keyspace_n(CassSession* session,
                                             const CassCluster* cluster,
                                             const char* keyspace,
                                             size_t keyspace_length) {
-  cass::SessionFuture* connect_future = new cass::SessionFuture();
-  connect_future->inc_ref();
+  cass::SessionFuture::Ptr connect_future(new cass::SessionFuture());
   session->connect_async(cluster->config(), std::string(keyspace, keyspace_length), connect_future);
-  return CassFuture::to(connect_future);
+  connect_future->inc_ref();
+  return CassFuture::to(connect_future.get());
 }
 
 CassFuture* cass_session_close(CassSession* session) {
-  cass::SessionFuture* close_future = new cass::SessionFuture();
-  close_future->inc_ref();
+  cass::SessionFuture::Ptr close_future(new cass::SessionFuture());
   session->close_async(close_future);
-  return CassFuture::to(close_future);
+  close_future->inc_ref();
+  return CassFuture::to(close_future.get());
 }
 
 CassFuture* cass_session_prepare(CassSession* session, const char* query) {
@@ -79,20 +81,26 @@ CassFuture* cass_session_prepare(CassSession* session, const char* query) {
 CassFuture* cass_session_prepare_n(CassSession* session,
                                    const char* query,
                                    size_t query_length) {
-  return CassFuture::to(session->prepare(query, query_length));
+  cass::Future::Ptr future(session->prepare(query, query_length));
+  future->inc_ref();
+  return CassFuture::to(future.get());
 }
 
 CassFuture* cass_session_execute(CassSession* session,
                                  const CassStatement* statement) {
-  return CassFuture::to(session->execute(statement->from()));
+  cass::Future::Ptr future(session->execute(cass::Request::ConstPtr(statement->from())));
+  future->inc_ref();
+  return CassFuture::to(future.get());
 }
 
 CassFuture* cass_session_execute_batch(CassSession* session, const CassBatch* batch) {
-  return CassFuture::to(session->execute(batch->from()));
+  cass::Future::Ptr future(session->execute(cass::Request::ConstPtr(batch->from())));
+  future->inc_ref();
+  return CassFuture::to(future.get());
 }
 
 const CassSchemaMeta* cass_session_get_schema_meta(const CassSession* session) {
-  return CassSchemaMeta::to(new cass::Metadata::SchemaSnapshot(session->metadata().schema_snapshot()));
+  return CassSchemaMeta::to(new cass::Metadata::SchemaSnapshot(session->metadata().schema_snapshot(session->protocol_version(), session->cassandra_version())));
 }
 
 void  cass_session_get_metrics(const CassSession* session,
@@ -153,8 +161,10 @@ Session::~Session() {
 
 void Session::clear(const Config& config) {
   config_ = config;
+  random_.reset();
   metrics_.reset(new Metrics(config_.thread_count_io() + 1));
   load_balancing_policy_.reset(config.load_balancing_policy());
+  speculative_execution_policy_.reset(config.speculative_execution_policy());
   connect_future_.reset();
   close_future_.reset();
   { // Lock hosts
@@ -165,6 +175,8 @@ void Session::clear(const Config& config) {
   request_queue_.reset();
   metadata_.clear();
   control_connection_.clear();
+  connect_error_code_ = CASS_OK;
+  connect_error_message_.clear();
   current_host_mark_ = true;
   pending_pool_count_ = 0;
   pending_workers_count_ = 0;
@@ -180,7 +192,7 @@ int Session::init() {
   if (rc != 0) return rc;
 
   for (unsigned int i = 0; i < config_.thread_count_io(); ++i) {
-    SharedRefPtr<IOWorker> io_worker(new IOWorker(this));
+    IOWorker::Ptr io_worker(new IOWorker(this));
     int rc = io_worker->init();
     if (rc != 0) return rc;
     io_workers_.push_back(io_worker);
@@ -203,19 +215,19 @@ void Session::broadcast_keyspace_change(const std::string& keyspace,
   keyspace_ = CopyOnWritePtr<std::string>(new std::string(keyspace));
 }
 
-SharedRefPtr<Host> Session::get_host(const Address& address) {
+Host::Ptr Session::get_host(const Address& address) {
   // Lock hosts. This can be called on a non-session thread.
   ScopedMutex l(&hosts_mutex_);
   HostMap::iterator it = hosts_.find(address);
   if (it == hosts_.end()) {
-    return SharedRefPtr<Host>();
+    return Host::Ptr();
   }
   return it->second;
 }
 
-SharedRefPtr<Host> Session::add_host(const Address& address) {
+Host::Ptr Session::add_host(const Address& address) {
   LOG_DEBUG("Adding new host: %s", address.to_string().c_str());
-  SharedRefPtr<Host> host(new Host(address, !current_host_mark_));
+  Host::Ptr host(new Host(address, !current_host_mark_));
   { // Lock hosts
     ScopedMutex l(&hosts_mutex_);
     hosts_[address] = host;
@@ -280,7 +292,7 @@ bool Session::notify_down_async(const Address& address) {
   return send_event_async(event);
 }
 
-void Session::connect_async(const Config& config, const std::string& keyspace, Future* future) {
+void Session::connect_async(const Config& config, const std::string& keyspace, const Future::Ptr& future) {
   ScopedMutex l(&state_mutex_);
 
   if (state_.load(MEMORY_ORDER_RELAXED) != SESSION_STATE_CLOSED) {
@@ -309,7 +321,7 @@ void Session::connect_async(const Config& config, const std::string& keyspace, F
   LOG_DEBUG("Issued connect event");
 
   state_.store(SESSION_STATE_CONNECTING, MEMORY_ORDER_RELAXED);
-  connect_future_.reset(future);
+  connect_future_ = future;
 
   if (!keyspace.empty()) {
     broadcast_keyspace_change(keyspace, NULL);
@@ -322,23 +334,20 @@ void Session::connect_async(const Config& config, const std::string& keyspace, F
   run();
 }
 
-void Session::close_async(Future* future, bool force) {
+void Session::close_async(const Future::Ptr& future) {
   ScopedMutex l(&state_mutex_);
 
   State state = state_.load(MEMORY_ORDER_RELAXED);
-  bool wait_for_connect_to_finish = (force && state == SESSION_STATE_CONNECTING);
-  if (state != SESSION_STATE_CONNECTED && !wait_for_connect_to_finish) {
+  if (state == SESSION_STATE_CLOSING || state == SESSION_STATE_CLOSED) {
     future->set_error(CASS_ERROR_LIB_UNABLE_TO_CLOSE,
                       "Already closing or closed");
     return;
   }
 
   state_.store(SESSION_STATE_CLOSING, MEMORY_ORDER_RELAXED);
-  close_future_.reset(future);
+  close_future_ = future;
 
-  if (!wait_for_connect_to_finish) {
-    internal_close();
-  }
+  internal_close();
 }
 
 void Session::internal_connect() {
@@ -360,25 +369,34 @@ void Session::internal_close() {
 
 void Session::notify_connected() {
   ScopedMutex l(&state_mutex_);
+
   if (state_.load(MEMORY_ORDER_RELAXED) == SESSION_STATE_CONNECTING) {
     state_.store(SESSION_STATE_CONNECTED, MEMORY_ORDER_RELAXED);
-  } else { // We recieved a 'force' close event
-    internal_close();
   }
-  connect_future_->set();
-  connect_future_.reset();
+  if (connect_future_) {
+    connect_future_->set();
+    connect_future_.reset();
+  }
 }
 
 void Session::notify_connect_error(CassError code, const std::string& message) {
+  ScopedMutex l(&state_mutex_);
+
+  State state = state_.load(MEMORY_ORDER_RELAXED);
+  if (state == SESSION_STATE_CLOSING || state == SESSION_STATE_CLOSED) {
+    return;
+  }
+
+  state_.store(SESSION_STATE_CLOSING, MEMORY_ORDER_RELAXED);
   connect_error_code_ = code;
   connect_error_message_ = message;
-  ScopedMutex l(&state_mutex_);
-  state_.store(SESSION_STATE_CLOSING, MEMORY_ORDER_RELAXED);
+
   internal_close();
 }
 
 void Session::notify_closed() {
   ScopedMutex l(&state_mutex_);
+
   state_.store(SESSION_STATE_CLOSED, MEMORY_ORDER_RELAXED);
   if (connect_future_) {
     connect_future_->set_error(connect_error_code_, connect_error_message_);
@@ -418,6 +436,12 @@ void Session::on_event(const SessionEvent& event) {
   switch (event.type) {
     case SessionEvent::CONNECT: {
       int port = config_.port();
+
+      // This needs to be done on the session thread because it could pause
+      // generating a new random seed.
+      if (config_.use_randomized_contact_points()) {
+        random_.reset(new Random());
+      }
 
       MultiResolver<Session*>::Ptr resolver(
             new MultiResolver<Session*>(this, on_resolve,
@@ -494,8 +518,11 @@ void Session::on_event(const SessionEvent& event) {
 void Session::on_resolve(MultiResolver<Session*>::Resolver* resolver) {
   Session* session = resolver->data()->data();
   if (resolver->is_success()) {
-    SharedRefPtr<Host> host = session->add_host(resolver->address());
-    host->set_hostname(resolver->hostname());
+    AddressVec addresses = resolver->addresses();
+    for (AddressVec::iterator it = addresses.begin(); it != addresses.end(); ++it) {
+      Host::Ptr host = session->add_host(*it);
+      host->set_hostname(resolver->hostname());
+    }
   } else if (resolver->is_timed_out()) {
     LOG_ERROR("Timed out attempting to resolve address for %s:%d\n",
               resolver->hostname().c_str(), resolver->port());
@@ -509,13 +536,18 @@ void Session::on_resolve_done(MultiResolver<Session*>* resolver) {
   resolver->data()->internal_connect();
 }
 
-void Session::execute(RequestHandler* request_handler) {
+void Session::execute(const RequestHandler::Ptr& request_handler) {
   if (state_.load(MEMORY_ORDER_ACQUIRE) != SESSION_STATE_CONNECTED) {
-    request_handler->on_error(CASS_ERROR_LIB_NO_HOSTS_AVAILABLE,
-                              "Session is not connected");
-  } else if (!request_queue_->enqueue(request_handler)) {
-    request_handler->on_error(CASS_ERROR_LIB_REQUEST_QUEUE_FULL,
-                              "The request queue has reached capacity");
+    request_handler->set_error(CASS_ERROR_LIB_NO_HOSTS_AVAILABLE,
+                               "Session is not connected");
+    return;
+  }
+
+  request_handler->inc_ref(); // Queue reference
+  if (!request_queue_->enqueue(request_handler.get())) {
+    request_handler->dec_ref();
+    request_handler->set_error(CASS_ERROR_LIB_REQUEST_QUEUE_FULL,
+                               "The request queue has reached capacity");
   }
 }
 
@@ -523,7 +555,7 @@ void Session::execute(RequestHandler* request_handler) {
 void Session::on_resolve_name(MultiResolver<Session*>::NameResolver* resolver) {
   Session* session = resolver->data()->data();
   if (resolver->is_success()) {
-    SharedRefPtr<Host> host = session->add_host(resolver->address());
+    Host::Ptr host = session->add_host(resolver->address());
     host->set_hostname(resolver->hostname());
   } else if (resolver->is_timed_out()) {
     LOG_ERROR("Timed out attempting to resolve hostname for host %s\n",
@@ -545,7 +577,7 @@ void Session::on_add_resolve_name(NameResolver* resolver) {
 
 void Session::on_control_connection_ready() {
   // No hosts lock necessary (only called on session thread and read-only)
-  load_balancing_policy_->init(control_connection_.connected_host(), hosts_);
+  load_balancing_policy_->init(control_connection_.connected_host(), hosts_, random_.get());
   load_balancing_policy_->register_handles(loop());
   for (IOWorkerVec::iterator it = io_workers_.begin(),
        end = io_workers_.end(); it != end; ++it) {
@@ -554,6 +586,10 @@ void Session::on_control_connection_ready() {
   for (HostMap::iterator it = hosts_.begin(), hosts_end = hosts_.end();
        it != hosts_end; ++it) {
     on_add(it->second, true);
+  }
+  if (pending_pool_count_ == 0) {
+    notify_connect_error(CASS_ERROR_LIB_NO_HOSTS_AVAILABLE,
+                         "No hosts available for connection using the current load balancing policy");
   }
   if (config().core_connections_per_host() == 0) {
     // Special case for internal testing. Not allowed by API
@@ -565,23 +601,18 @@ void Session::on_control_connection_error(CassError code, const std::string& mes
   notify_connect_error(code, message);
 }
 
-Future* Session::prepare(const char* statement, size_t length) {
-  PrepareRequest* prepare = new PrepareRequest();
-  prepare->set_query(statement, length);
+Future::Ptr Session::prepare(const char* statement, size_t length) {
+  SharedRefPtr<PrepareRequest> prepare(new PrepareRequest(std::string(statement, length)));
 
-  ResponseFuture* future = new ResponseFuture(metadata_);
-  future->inc_ref(); // External reference
+  ResponseFuture::Ptr future(new ResponseFuture(metadata_.schema_snapshot(protocol_version(), cassandra_version())));
   future->statement.assign(statement, length);
 
-  RequestHandler* request_handler = new RequestHandler(prepare, future, NULL);
-  request_handler->inc_ref(); // IOWorker reference
-
-  execute(request_handler);
+  execute(RequestHandler::Ptr(new RequestHandler(prepare, future, NULL)));
 
   return future;
 }
 
-void Session::on_add(SharedRefPtr<Host> host, bool is_initial_connection) {
+void Session::on_add(Host::Ptr host, bool is_initial_connection) {
 #if UV_VERSION_MAJOR >= 1
   if (config_.use_hostname_resolution() && host->hostname().empty()) {
     NameResolver::resolve(loop(),
@@ -596,7 +627,7 @@ void Session::on_add(SharedRefPtr<Host> host, bool is_initial_connection) {
 #endif
 }
 
-void Session::internal_on_add(SharedRefPtr<Host> host, bool is_initial_connection) {
+void Session::internal_on_add(Host::Ptr host, bool is_initial_connection) {
   host->set_up();
 
   if (load_balancing_policy_->distance(host) == CASS_HOST_DISTANCE_IGNORE) {
@@ -615,7 +646,7 @@ void Session::internal_on_add(SharedRefPtr<Host> host, bool is_initial_connectio
   }
 }
 
-void Session::on_remove(SharedRefPtr<Host> host) {
+void Session::on_remove(Host::Ptr host) {
   load_balancing_policy_->on_remove(host);
   { // Lock hosts
     ScopedMutex l(&hosts_mutex_);
@@ -627,7 +658,7 @@ void Session::on_remove(SharedRefPtr<Host> host) {
   }
 }
 
-void Session::on_up(SharedRefPtr<Host> host) {
+void Session::on_up(Host::Ptr host) {
   host->set_up();
 
   if (load_balancing_policy_->distance(host) == CASS_HOST_DISTANCE_IGNORE) {
@@ -642,7 +673,7 @@ void Session::on_up(SharedRefPtr<Host> host) {
   }
 }
 
-void Session::on_down(SharedRefPtr<Host> host) {
+void Session::on_down(Host::Ptr host) {
   host->set_down();
   load_balancing_policy_->on_down(host);
 
@@ -658,18 +689,20 @@ void Session::on_down(SharedRefPtr<Host> host) {
   }
 }
 
-Future* Session::execute(const RoutableRequest* request) {
-  ResponseFuture* future = new ResponseFuture(metadata_);
-  future->inc_ref(); // External reference
+Future::Ptr Session::execute(const Request::ConstPtr& request,
+                             const Address* preferred_address) {
+  ResponseFuture::Ptr future(new ResponseFuture());
 
   RetryPolicy* retry_policy
       = request->retry_policy() != NULL ? request->retry_policy()
                                         : config().retry_policy();
 
-  RequestHandler* request_handler = new RequestHandler(request,
-                                                       future,
-                                                       retry_policy);
-  request_handler->inc_ref(); // IOWorker reference
+  RequestHandler::Ptr request_handler(new RequestHandler(request,
+                                                         future,
+                                                         retry_policy));
+  if (preferred_address) {
+    request_handler->set_preferred_address(*preferred_address);
+  }
 
   execute(request_handler);
 
@@ -685,11 +718,14 @@ void Session::on_execute(uv_async_t* data) {
 
   bool is_closing = false;
 
-  RequestHandler* request_handler = NULL;
-  while (session->request_queue_->dequeue(request_handler)) {
-    if (request_handler != NULL) {
-      request_handler->set_query_plan(session->new_query_plan(request_handler->request(),
-                                                              request_handler->encoding_cache()));
+  RequestHandler* temp = NULL;
+  while (session->request_queue_->dequeue(temp)) {
+    RequestHandler::Ptr request_handler(temp);
+    if (request_handler) {
+      request_handler->dec_ref(); // Queue reference
+
+      request_handler->set_query_plan(session->new_query_plan(request_handler));
+      request_handler->set_execution_plan(session->new_execution_plan(request_handler->request()));
 
       if (request_handler->timestamp() == CASS_INT64_MIN) {
         request_handler->set_timestamp(session->config_.timestamp_gen()->next());
@@ -699,17 +735,16 @@ void Session::on_execute(uv_async_t* data) {
       while (!is_done) {
         request_handler->next_host();
 
-        Address address;
-        if (!request_handler->get_current_host_address(&address)) {
-          request_handler->on_error(CASS_ERROR_LIB_NO_HOSTS_AVAILABLE,
-                                    "All connections on all I/O threads are busy");
+        if (!request_handler->current_host()) {
+          request_handler->set_error(CASS_ERROR_LIB_NO_HOSTS_AVAILABLE,
+                                     "All connections on all I/O threads are busy");
           break;
         }
 
         size_t start = session->current_io_worker_;
         for (size_t i = 0, size = session->io_workers_.size(); i < size; ++i) {
-          const SharedRefPtr<IOWorker>& io_worker = session->io_workers_[start % size];
-          if (io_worker->is_host_available(address) &&
+          const IOWorker::Ptr& io_worker = session->io_workers_[start % size];
+          if (io_worker->is_host_available(request_handler->current_host()->address()) &&
               io_worker->execute(request_handler)) {
             session->current_io_worker_ = (start + 1) % size;
             is_done = true;
@@ -733,10 +768,14 @@ void Session::on_execute(uv_async_t* data) {
   }
 }
 
-QueryPlan* Session::new_query_plan(const Request* request, Request::EncodingCache* cache) {
+QueryPlan* Session::new_query_plan(const RequestHandler::Ptr& request_handler) {
   const CopyOnWritePtr<std::string> keyspace(keyspace_);
-  return load_balancing_policy_->new_query_plan(*keyspace, request,
-                                                metadata_.token_map(), cache);
+  return load_balancing_policy_->new_query_plan(*keyspace, request_handler.get(), token_map_.get());
+}
+
+SpeculativeExecutionPlan* Session::new_execution_plan(const Request* request) {
+  const CopyOnWritePtr<std::string> keyspace(keyspace_);
+  return speculative_execution_policy_->new_plan(*keyspace, request);
 }
 
 } // namespace cass

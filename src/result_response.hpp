@@ -35,6 +35,8 @@ class ResultIterator;
 
 class ResultResponse : public Response {
 public:
+  typedef SharedRefPtr<ResultResponse> Ptr;
+  typedef SharedRefPtr<const ResultResponse> ConstPtr;
   typedef std::vector<size_t> PKIndexVec;
 
   ResultResponse()
@@ -57,13 +59,14 @@ public:
 
   bool no_metadata() const { return !metadata_; }
 
-  const SharedRefPtr<ResultMetadata>& metadata() const { return metadata_; }
+  const ResultMetadata::Ptr& metadata() const { return metadata_; }
 
   void set_metadata(ResultMetadata* metadata) {
     metadata_.reset(metadata);
+    decode_first_row();
   }
 
-  const SharedRefPtr<ResultMetadata>& result_metadata() const { return result_metadata_; }
+  const ResultMetadata::Ptr& result_metadata() const { return result_metadata_; }
 
   StringRef paging_state() const { return paging_state_; }
   StringRef prepared() const { return prepared_; }
@@ -80,11 +83,11 @@ public:
 
   bool decode(int version, char* input, size_t size);
 
-  void decode_first_row();
-
 private:
-  char* decode_metadata(char* input, SharedRefPtr<ResultMetadata>* metadata,
+  char* decode_metadata(char* input, ResultMetadata::Ptr* metadata,
                         bool has_pk_indices = false);
+
+  void decode_first_row();
 
   bool decode_rows(char* input);
 
@@ -98,8 +101,8 @@ private:
   int protocol_version_;
   int32_t kind_;
   bool has_more_pages_; // row data
-  SharedRefPtr<ResultMetadata> metadata_;
-  SharedRefPtr<ResultMetadata> result_metadata_;
+  ResultMetadata::Ptr metadata_;
+  ResultMetadata::Ptr result_metadata_;
   StringRef paging_state_; // row paging
   StringRef prepared_; // prepared result
   StringRef change_; // schema change
@@ -115,5 +118,7 @@ private:
 };
 
 } // namespace cass
+
+EXTERNAL_TYPE(cass::ResultResponse, CassResult)
 
 #endif

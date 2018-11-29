@@ -53,7 +53,7 @@ in conjunction with other load balancing and routing policies.
 cass_cluster_set_token_aware_routing(cluster, cass_true);
 
 /* Disable token-aware routing */
-cass_cluster_set_token_aware_routing(cluster, cass_true);
+cass_cluster_set_token_aware_routing(cluster, cass_false);
 ```
 
 ### Latency-aware Routing
@@ -154,6 +154,56 @@ cass_cluster_set_blacklist_dc_filtering(cluster, "dc2, dc4");
 cass_cluster_set_blacklist_dc_filtering(cluster, "");
 ```
 
+## Speculative Execution
+
+For certain applications it is of the utmost importance to minimize latency.
+Speculative execution is a way to minimize latency by preemptively executing
+several instances of the same query against different nodes. The fastest
+response is then returned to the client application and the other requests are
+cancelled. Speculative execution is <b>disabled</b> by default.
+
+### Query Idempotence
+
+Speculative execution will result in executing the same query several times.
+Therefore, it is important that queries are idempotent i.e. a query can be
+applied multiple times without changing the result beyond the initial
+application. <b>Queries that are not explicitly marked as idempotent will not be
+scheduled for speculative executions.</b>
+
+The following types of queries are <b>not</b> idempotent:
+
+* Mutation of `counter` columns
+* Prepending or appending to a `list` column
+* Use of non-idempotent CQL function e.g. `now()` or `uuid()`
+
+The driver is unable to determine if a query is idempotent therefore it is up to
+an application to explicitly mark a statement as being idempotent.
+
+```c
+CassStatement* statement = cass_statement_new( "SELECT * FROM table1", 0);
+cass_statement_set_is_idempotent(statement, cass_true);
+```
+
+### Enabling speculative execution
+
+Speculative execution is enabled by connecting a `CassSession` with a
+`CassCluster` that has a speculative execution policy enabled. The driver
+currently only supports a constant policy, but may support more in the future.
+
+#### Constant speculative execution policy
+
+The following will start up to 2 more executions after the initial execution
+with the subsequent executions being created 500 milliseconds apart.
+
+```c
+CassCluster* cluster = cass_cluster_new();
+cass_int64_t constant_delay_ms = 500; /* Delay before a new execution is created */
+int max_speculative_executions = 2;   /* Number of executions */
+cass_cluster_set_constant_speculative_execution_policy(cluster
+                                                       constant_delay_ms,
+                                                       max_speculative_executions);
+```
+
 ### Connection Heartbeats
 
 To prevent intermediate network devices (routers, switches, etc.) from
@@ -182,5 +232,71 @@ cass_cluster_set_connection_idle_timeout(cluster, 120);
 It can be disabled by setting the value to a very long timeout or by disabling
 heartbeats.
 
-[`allow_remote_dcs_for_local_cl`]: http://datastax.github.io/cpp-driver/api/CassCluster/#1a46b9816129aaa5ab61a1363489dccfd0
-[`OPTIONS`]: https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v3.spec#L278-L282
+### Performance Tips
+
+#### Use a single persistent session
+
+Sessions are expensive objects to create in both time and resources because they
+maintain a pool of connections to your Cassandra cluster. An application should
+create a minimal number of sessions and maintain them for the lifetime of an
+application.
+
+#### Use token-aware and latency-aware policies
+
+The token-aware load balancing can reduce the latency of requests by avoiding an
+extra network hop through a coordinator node. When using the token-aware policy
+requests are sent to one of the nodes which will retrieved or stored instead of
+routing the request through a proxy node (coordinator node).
+
+The latency-aware load balancing policy can also reduce the latency of requests
+by routing requests to nodes that historical performing with the lowest latency.
+This can prevent requests from being sent to nodes that are underperforming.
+
+Both [latency-aware] and [token-aware] can be use together to obtain the benefits of
+both.
+
+#### High throughput applications may need increase watermark settings
+
+If your application is submitting a large number of requests it may trigger the
+driver's back pressure mechanism.  This means Cassandra cannot maintain your
+request rate and requests are starting to queue in the driver (as a pending
+request). This mechanism keeps the driver from queueing your requests until
+memory is exhausted and is a signal to your application to slow down. However,
+you can increase these parameters:
+
+```c
+cass_cluster_set_pending_requests_low_water_mark(cluster, 5000);
+cass_cluster_set_pending_requests_high_water_mark(cluster, 10000);
+```
+
+If your applications requests are very large you may need to adjust the size
+watermarks:
+
+```c
+cass_cluster_set_write_bytes_low_water_mark(cluster, 512 * 1024);
+cass_cluster_set_write_bytes_high_water_mark(cluster, 1024 * 1024);
+```
+
+#### Use [paging] when retrieving large result sets
+
+Using a large page size or a very high `LIMIT` clause can cause your application
+to delay for each individual request. The driver's paging mechanism can be used
+to decrease the latency of individual requests.
+
+#### Choose a lower consistency level
+
+Ultimately, choosing a consistency level is a trade-off between consistency and
+availability. Performance should not be a large deciding factor when choosing a
+consistency level. However, it can affect high-percentile latency numbers
+because requests with consistency levels greater than `ONE` can cause requests
+to wait for one or more nodes to respond back to the coordinator node before a
+request can complete. In multi-datacenter configurations, consistency levels such as
+`EACH_QUORUM` can cause a request to wait for replication across a slower cross
+datacenter network link.  More information about setting the consistency level
+can be found [here](http://datastax.github.io/cpp-driver/topics/basics/consistency/).
+
+[`allow_remote_dcs_for_local_cl`]: http://datastax.github.io/cpp-driver/api/struct.CassCluster/#1a46b9816129aaa5ab61a1363489dccfd0
+[`OPTIONS`]: https://github.com/apache/cassandra/blob/cassandra-3.0/doc/native_protocol_v3.spec
+[token-aware]: http://datastax.github.io/cpp-driver/topics/configuration/#latency-aware-routing
+[latency-aware]: http://datastax.github.io/cpp-driver/topics/configuration/#token-aware-routing
+[paging]: http://datastax.github.io/cpp-driver/topics/basics/handling_results/#paging

@@ -20,6 +20,7 @@
 #include "cassandra.h"
 #include "data_type.hpp"
 #include "encode.hpp"
+#include "external.hpp"
 #include "buffer.hpp"
 #include "ref_counted.hpp"
 #include "types.hpp"
@@ -44,7 +45,7 @@ public:
     : data_type_(data_type)
     , items_(data_type_->types().size()) { }
 
-  const SharedRefPtr<const TupleType>& data_type() const { return data_type_; }
+  const TupleType::ConstPtr& data_type() const { return data_type_; }
   const BufferVec& items() const { return items_; }
 
 #define SET_TYPE(Type)                  \
@@ -68,6 +69,7 @@ public:
   SET_TYPE(CassUuid)
   SET_TYPE(CassInet)
   SET_TYPE(CassDecimal)
+  SET_TYPE(CassDuration)
 
 #undef SET_TYPE
 
@@ -99,7 +101,7 @@ private:
   void encode_buffers(size_t pos, Buffer* buf) const;
 
 private:
-  SharedRefPtr<const TupleType> data_type_;
+  TupleType::ConstPtr data_type_;
   BufferVec items_;
 
 private:
@@ -107,6 +109,8 @@ private:
 };
 
 } // namespace cass
+
+EXTERNAL_TYPE(cass::Tuple, CassTuple)
 
 #endif
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.6.4)
 
 # Ensure functions/modules are available
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/")
 
 set(PROJECT_NAME_STR cassandra)
 set(PROJECT_LIB_NAME ${PROJECT_NAME_STR})
@@ -64,7 +64,6 @@ option(CASS_USE_BOOST_ATOMIC "Use Boost atomics library" OFF)
 option(CASS_USE_STD_ATOMIC "Use C++11 atomics library" OFF)
 option(CASS_USE_OPENSSL "Use OpenSSL" ON)
 option(CASS_USE_TCMALLOC "Use tcmalloc" OFF)
-option(CASS_USE_SPARSEHASH "Use sparsehash" OFF)
 option(CASS_USE_ZLIB "Use zlib" OFF)
 option(CASS_USE_LIBSSH2 "Use libssh2 for integration tests" ON)
 
@@ -107,12 +106,6 @@ CassUseLibuv()
 if(CASS_USE_BOOST_ATOMIC OR CASS_BUILD_INTEGRATION_TESTS OR CASS_BUILD_UNIT_TESTS)
   CassUseBoost()
 endif()
-
-# Sparsehash
-if(CASS_USE_SPARSEHASH)
-  CassUseSparshHash()
-endif()
-
 
 # OpenSSL
 if(CASS_USE_OPENSSL)
@@ -180,6 +173,7 @@ set(CASS_SOURCE_DIR ${PROJECT_SOURCE_DIR})
 CassSetCompilerFlags()
 CassAddIncludes()
 CassFindSourceFiles()
+CassConfigure()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
@@ -248,7 +242,8 @@ if(NOT DEFINED CMAKE_INSTALL_LIBDIR)
     if(EXISTS "/etc/debian_version")
       set (CMAKE_INSTALL_LIBDIR "lib/${CMAKE_LIBRARY_ARCHITECTURE}")
     elseif(EXISTS "/etc/redhat-release" OR EXISTS "/etc/fedora-release" OR
-           EXISTS "/etc/slackware-version" OR EXISTS "/etc/gentoo-release")
+           EXISTS "/etc/slackware-version" OR EXISTS "/etc/gentoo-release" OR
+           EXISTS "/etc/os-release")
       if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         set (CMAKE_INSTALL_LIBDIR "lib64")
       else()

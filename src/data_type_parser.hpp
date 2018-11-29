@@ -83,7 +83,7 @@ protected:
 class DataTypeCqlNameParser {
 public:
   static DataType::ConstPtr parse(const std::string& type,
-                                  const NativeDataTypes& native_types,
+                                  SimpleDataTypeCache& cache,
                                   KeyspaceMetadata* keyspace,
                                   bool is_frozen = false);
 
@@ -106,8 +106,9 @@ private:
 
 class ParseResult : public RefCounted<ParseResult> {
 public:
+  typedef SharedRefPtr<ParseResult> Ptr;
   typedef std::vector<bool> ReversedVec;
-  typedef std::map<std::string, DataType::ConstPtr > CollectionMap;
+  typedef std::map<std::string, DataType::ConstPtr> CollectionMap;
 
   ParseResult(DataType::ConstPtr type, bool reversed)
     : is_composite_(false) {
@@ -146,8 +147,8 @@ public:
   static bool is_user_type(const std::string& type);
   static bool is_tuple_type(const std::string& type);
 
-  static DataType::ConstPtr parse_one(const std::string& type, const NativeDataTypes& native_types);
-  static SharedRefPtr<ParseResult> parse_with_composite(const std::string& type, const NativeDataTypes& native_types);
+  static DataType::ConstPtr parse_one(const std::string& type, SimpleDataTypeCache& cache);
+  static ParseResult::Ptr parse_with_composite(const std::string& type, SimpleDataTypeCache& cache);
 
 private:
   static bool get_nested_class_name(const std::string& type, std::string* class_name);

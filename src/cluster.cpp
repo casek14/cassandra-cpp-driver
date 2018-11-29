@@ -17,9 +17,10 @@
 #include "cluster.hpp"
 
 #include "dc_aware_policy.hpp"
+#include "external.hpp"
 #include "logger.hpp"
 #include "round_robin_policy.hpp"
-#include "external_types.hpp"
+#include "speculative_execution.hpp"
 #include "utils.hpp"
 
 #include <sstream>
@@ -259,10 +260,6 @@ CassError cass_cluster_set_load_balance_dc_aware_n(CassCluster* cluster,
 void cass_cluster_set_token_aware_routing(CassCluster* cluster,
                                           cass_bool_t enabled) {
   cluster->config().set_token_aware_routing(enabled == cass_true);
-  // Token-aware routing relies on up-to-date schema information
-  if (enabled == cass_true) {
-    cluster->config().set_use_schema(true);
-  }
 }
 
 void cass_cluster_set_latency_aware_routing(CassCluster* cluster,
@@ -380,7 +377,9 @@ CassError cass_cluster_set_authenticator_callbacks(CassCluster* cluster,
                                                    const CassAuthenticatorCallbacks* exchange_callbacks,
                                                    CassAuthenticatorDataCleanupCallback cleanup_callback,
                                                    void* data) {
-  cluster->config().set_auth_provider(new cass::ExternalAuthProvider(exchange_callbacks, cleanup_callback, data));
+  cluster->config().set_auth_provider(cass::AuthProvider::Ptr(
+                                        new cass::ExternalAuthProvider(exchange_callbacks,
+                                                                       cleanup_callback, data)));
   return CASS_OK;
 }
 
@@ -407,10 +406,6 @@ void cass_cluster_set_timestamp_gen(CassCluster* cluster,
 void cass_cluster_set_use_schema(CassCluster* cluster,
                                  cass_bool_t enabled) {
   cluster->config().set_use_schema(enabled == cass_true);
-  // Token-aware routing relies on up-to-date schema information
-  if (enabled == cass_false) {
-    cluster->config().set_token_aware_routing(false);
-  }
 }
 
 CassError cass_cluster_set_use_hostname_resolution(CassCluster* cluster,
@@ -421,6 +416,30 @@ CassError cass_cluster_set_use_hostname_resolution(CassCluster* cluster,
 #else
   return CASS_ERROR_LIB_NOT_IMPLEMENTED;
 #endif
+}
+
+CassError cass_cluster_set_use_randomized_contact_points(CassCluster* cluster,
+                                                         cass_bool_t enabled) {
+  cluster->config().set_use_randomized_contact_points(enabled);
+  return CASS_OK;
+}
+
+CassError cass_cluster_set_constant_speculative_execution_policy(CassCluster* cluster,
+                                                                 cass_int64_t constant_delay_ms,
+                                                                 int max_speculative_executions) {
+  if (constant_delay_ms < 0 || max_speculative_executions < 0) {
+    return CASS_ERROR_LIB_BAD_PARAMS;
+  }
+  cluster->config().set_speculative_execution_policy(
+        new cass::ConstantSpeculativeExecutionPolicy(constant_delay_ms,
+                                                     max_speculative_executions));
+  return CASS_OK;
+}
+
+CassError cass_cluster_set_no_speculative_execution_policy(CassCluster* cluster) {
+  cluster->config().set_speculative_execution_policy(
+        new cass::NoSpeculativeExecutionPolicy());
+  return CASS_OK;
 }
 
 void cass_cluster_free(CassCluster* cluster) {

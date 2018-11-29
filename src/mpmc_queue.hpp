@@ -23,8 +23,9 @@
 #define __CASS_MPMC_QUEUE_INCLUDED__
 
 #include "atomic.hpp"
-#include "utils.hpp"
+#include "cassconfig.hpp"
 #include "macros.hpp"
+#include "utils.hpp"
 
 #include <assert.h>
 
@@ -132,7 +133,7 @@ public:
   }
 
   static void memory_fence() {
-#if defined(CASS_USE_BOOST_ATOMIC) || defined(CASS_USE_STD_ATOMIC)
+#if defined(HAVE_BOOST_ATOMIC) || defined(HAVE_STD_ATOMIC)
     atomic_thread_fence(MEMORY_ORDER_SEQ_CST);
 #endif
   }

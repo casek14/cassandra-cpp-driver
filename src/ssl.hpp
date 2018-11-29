@@ -18,6 +18,8 @@
 #define __CASS_SSL_HPP_INCLUDED__
 
 #include "cassandra.h"
+#include "cassconfig.hpp"
+#include "external.hpp"
 #include "host.hpp"
 #include "ref_counted.hpp"
 #include "ring_buffer.hpp"
@@ -70,6 +72,8 @@ protected:
 
 class SslContext : public RefCounted<SslContext> {
 public:
+  typedef SharedRefPtr<SslContext> Ptr;
+
   SslContext()
     : verify_flags_(CASS_SSL_VERIFY_PEER_CERT) {}
 
@@ -94,16 +98,18 @@ protected:
 template <class T>
 class SslContextFactoryBase {
 public:
-  static SslContext* create();
+  static SslContext::Ptr create();
   static void init();
 };
 
 } // namespace cass
 
-#ifdef CASS_USE_OPENSSL
+#ifdef HAVE_OPENSSL
 #include "ssl/ssl_openssl_impl.hpp"
 #else
 #include "ssl/ssl_no_impl.hpp"
 #endif
+
+EXTERNAL_TYPE(cass::SslContext, CassSsl)
 
 #endif

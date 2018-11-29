@@ -19,10 +19,10 @@
 
 #include "cassandra.h"
 #include "data_type.hpp"
-#include "fixed_vector.hpp"
 #include "hash_table.hpp"
 #include "list.hpp"
 #include "ref_counted.hpp"
+#include "small_vector.hpp"
 #include "string_ref.hpp"
 
 #include <uv.h>
@@ -43,6 +43,8 @@ struct ColumnDefinition : public HashTableEntry<ColumnDefinition> {
 
 class ResultMetadata : public RefCounted<ResultMetadata> {
 public:
+  typedef SharedRefPtr<ResultMetadata> Ptr;
+
   ResultMetadata(size_t column_count);
 
   const ColumnDefinition& get_column_definition(size_t index) const { return defs_[index]; }

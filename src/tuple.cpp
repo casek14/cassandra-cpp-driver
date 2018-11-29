@@ -14,11 +14,12 @@
   limitations under the License.
 */
 
-#include "collection.hpp"
+#include "tuple.hpp"
 
+#include "collection.hpp"
 #include "constants.hpp"
 #include "encode.hpp"
-#include "external_types.hpp"
+#include "external.hpp"
 #include "macros.hpp"
 #include "user_type_value.hpp"
 
@@ -36,7 +37,7 @@ CassTuple* cass_tuple_new_from_data_type(const CassDataType* data_type) {
   }
   return CassTuple::to(
         new cass::Tuple(
-          cass::SharedRefPtr<const cass::DataType>(data_type)));
+          cass::DataType::ConstPtr(data_type)));
 }
 
 void cass_tuple_free(CassTuple* tuple) {
@@ -72,6 +73,9 @@ CASS_TUPLE_SET(bytes,
 CASS_TUPLE_SET(decimal,
                THREE_PARAMS_(const cass_byte_t* varint, size_t varint_size, int scale),
                cass::CassDecimal(varint, varint_size, scale))
+CASS_TUPLE_SET(duration,
+               THREE_PARAMS_(cass_int32_t months, cass_int32_t days, cass_int32_t nanos),
+               cass::CassDuration(months, days, nanos))
 
 #undef CASS_TUPLE_SET
 

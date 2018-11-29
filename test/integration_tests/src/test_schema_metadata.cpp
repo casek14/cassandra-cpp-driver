@@ -66,14 +66,17 @@ struct TestSchemaMetadata : public test_utils::SingleSessionTest {
   const CassSchemaMeta* schema_meta_;
 
   TestSchemaMetadata()
-    : SingleSessionTest(1, 0)
-    , schema_meta_(NULL) {}
+    : SingleSessionTest(1, 0, false)
+    , schema_meta_(NULL) {
+    cass_cluster_set_token_aware_routing(cluster, cass_false);
+    create_session();
+  }
 
-	~TestSchemaMetadata() {
+  ~TestSchemaMetadata() {
     if (schema_meta_) {
       cass_schema_meta_free(schema_meta_);
-		}
-	}
+    }
+  }
 
   void verify_keyspace_created(const std::string& ks) {
     test_utils::CassResultPtr result;
@@ -110,23 +113,23 @@ struct TestSchemaMetadata : public test_utils::SingleSessionTest {
     } else {
       schema_meta_ = cass_session_get_schema_meta(session);
     }
-	}
+  }
 
   void create_simple_strategy_keyspace(unsigned int replication_factor = 1, bool durable_writes = true) {
-		test_utils::execute_query_with_error(session, str(boost::format(test_utils::DROP_KEYSPACE_FORMAT) % SIMPLE_STRATEGY_KEYSPACE_NAME));
+    test_utils::execute_query_with_error(session, str(boost::format(test_utils::DROP_KEYSPACE_FORMAT) % SIMPLE_STRATEGY_KEYSPACE_NAME));
     test_utils::execute_query(session, str(boost::format("CREATE KEYSPACE %s WITH replication = { 'class' : 'SimpleStrategy', 'replication_factor' : %s } AND durable_writes = %s")
                                            % SIMPLE_STRATEGY_KEYSPACE_NAME % replication_factor % (durable_writes ? "true" : "false")));
     refresh_schema_meta();
-	}
+  }
 
   void create_network_topology_strategy_keyspace(unsigned int replicationFactorDataCenterOne = 3, unsigned int replicationFactorDataCenterTwo = 2, bool isDurableWrites = true) {
-		test_utils::execute_query_with_error(session, str(boost::format(test_utils::DROP_KEYSPACE_FORMAT) % NETWORK_TOPOLOGY_KEYSPACE_NAME));
+    test_utils::execute_query_with_error(session, str(boost::format(test_utils::DROP_KEYSPACE_FORMAT) % NETWORK_TOPOLOGY_KEYSPACE_NAME));
     test_utils::execute_query(session, str(boost::format("CREATE KEYSPACE %s WITH replication = { 'class' : 'NetworkTopologyStrategy',  'dc1' : %d, 'dc2' : %d } AND durable_writes = %s")
                                            % NETWORK_TOPOLOGY_KEYSPACE_NAME % replicationFactorDataCenterOne % replicationFactorDataCenterTwo
                                            % (isDurableWrites ? "true" : "false")));
 
     refresh_schema_meta();
-	}
+  }
 
   const CassKeyspaceMeta* schema_get_keyspace(const std::string& ks_name) {
     const CassKeyspaceMeta* ks_meta = cass_schema_meta_keyspace_by_name(schema_meta_, ks_name.c_str());
@@ -675,6 +678,7 @@ struct TestSchemaMetadata : public test_utils::SingleSessionTest {
 
     test_utils::execute_query(session, "USE " SIMPLE_STRATEGY_KEYSPACE_NAME);
     test_utils::execute_query(session, str(boost::format(test_utils::CREATE_TABLE_ALL_TYPES) % ALL_DATA_TYPES_TABLE_NAME));
+    refresh_schema_meta();
     test_utils::execute_query(session, "ALTER TABLE " ALL_DATA_TYPES_TABLE_NAME " WITH comment='" COMMENT "'");
     refresh_schema_meta();
 
@@ -1426,7 +1430,7 @@ BOOST_AUTO_TEST_CASE(frozen_types) {
  * @expected_result UDA and UDF can be looked up correctly
  */
 BOOST_AUTO_TEST_CASE(lookup) {
-  if (version < "2.1.0") return;
+  if (version < "2.2.0") return;
 
   test_utils::execute_query(session, "CREATE KEYSPACE lookup WITH replication = "
     "{ 'class' : 'SimpleStrategy', 'replication_factor' : 3 }");
@@ -1490,7 +1494,7 @@ BOOST_AUTO_TEST_CASE(lookup) {
     BOOST_CHECK_EQUAL(CASS_VALUE_TYPE_BIGINT, cass_data_type_type(cass_data_type_sub_data_type(datatype, 1)));
     datatype = cass_aggregate_meta_return_type(agg_meta);
     BOOST_CHECK_EQUAL(CASS_VALUE_TYPE_DOUBLE, cass_data_type_type(datatype));
-    func_meta = cass_aggregate_meta_state_func(agg_meta);
+    func_meta = cass_aggregate_meta_final_func(agg_meta);
     BOOST_CHECK_EQUAL(1, cass_function_meta_argument_count(func_meta));
     datatype = cass_function_meta_argument_type_by_name(func_meta, "state");
     BOOST_CHECK_EQUAL(CASS_VALUE_TYPE_TUPLE, cass_data_type_type(datatype));
@@ -1852,6 +1856,59 @@ BOOST_AUTO_TEST_CASE(duplicate_table_name) {
     const CassTableMeta* table_meta = schema_get_table("test15", "table1");
     BOOST_CHECK(cass_table_meta_column_by_name(table_meta, "key1") != NULL);
     BOOST_CHECK(cass_table_meta_index_by_name(table_meta, "index1") != NULL);
+  }
+}
+
+/**
+ * Ensure integer type is returned as a varint.
+ *
+ * Verifies the case the Cassandra marshal type is IntegerType and maps to a
+ * CASS_VALUE_TYPE_VARINT.
+ *
+ * @since 2.6.0
+ * @jira_ticket CPP-419
+ * @test_category schema
+ * @cassandra_version 1.2.x
+ */
+BOOST_AUTO_TEST_CASE(integer_type_varint_mapping) {
+  test_utils::execute_query(session, "CREATE KEYSPACE varint_type WITH replication = "
+                                     "{ 'class' : 'SimpleStrategy', 'replication_factor' : 3 }");
+  test_utils::execute_query(session, "CREATE TABLE varint_type.table1 (key1 TEXT PRIMARY KEY, value1 VARINT)" );
+  refresh_schema_meta();
+
+  {
+    const CassColumnMeta* col_meta = schema_get_column("varint_type", "table1", "value1");
+    const CassValueType value_type = cass_data_type_type(cass_column_meta_data_type(col_meta));
+    BOOST_CHECK_EQUAL(value_type, CASS_VALUE_TYPE_VARINT);
+  }
+}
+
+/**
+ * Ensure custom types with single quotes are parsed properly.
+ *
+ * @since 2.6.0
+ * @jira_ticket CPP-431
+ * @test_category schema
+ * @cassandra_version 2.1.x
+ */
+BOOST_AUTO_TEST_CASE(single_quote_custom_type) {
+  if (version < "2.1.0") return;
+
+  test_utils::execute_query(session, "CREATE KEYSPACE single_quote_custom_type WITH replication = "
+                                     "{ 'class' : 'SimpleStrategy', 'replication_factor' : 3 }");
+  test_utils::execute_query(session, "CREATE TABLE single_quote_custom_type.table1 (key1 TEXT PRIMARY KEY, value1 'org.apache.cassandra.db.marshal.LexicalUUIDType')");
+
+  refresh_schema_meta();
+
+  {
+    const CassColumnMeta* col_meta = schema_get_column("single_quote_custom_type", "table1", "value1");
+    const CassDataType* data_type = cass_column_meta_data_type(col_meta);
+    BOOST_REQUIRE(data_type != NULL);
+    const CassValueType value_type = cass_data_type_type(data_type);
+    BOOST_CHECK_EQUAL(value_type, CASS_VALUE_TYPE_CUSTOM);
+    CassString class_name;
+    cass_data_type_class_name(data_type, &class_name.data, &class_name.length);
+    BOOST_CHECK_EQUAL(class_name, "org.apache.cassandra.db.marshal.LexicalUUIDType");
   }
 }
 

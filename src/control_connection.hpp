@@ -18,15 +18,17 @@
 #define __CASS_CONTROL_CONNECTION_HPP_INCLUDED__
 
 #include "address.hpp"
+#include "config.hpp"
 #include "connection.hpp"
-#include "token_map.hpp"
-#include "handler.hpp"
+#include "request_callback.hpp"
 #include "host.hpp"
 #include "load_balancing.hpp"
 #include "macros.hpp"
-#include "multiple_request_handler.hpp"
 #include "response.hpp"
 #include "scoped_ptr.hpp"
+#include "token_map.hpp"
+
+#include <stdint.h>
 
 namespace cass {
 
@@ -57,7 +59,11 @@ public:
     return protocol_version_;
   }
 
-  const SharedRefPtr<Host>& connected_host() const;
+  const VersionNumber& cassandra_version() const {
+    return cassandra_version_;
+  }
+
+  const Host::Ptr& connected_host() const;
 
   void clear();
 
@@ -69,19 +75,21 @@ public:
 
 private:
   template<class T>
-  class ControlMultipleRequestHandler : public MultipleRequestHandler {
+  class ControlMultipleRequestCallback : public MultipleRequestCallback {
   public:
-    typedef void (*ResponseCallback)(ControlConnection*, const T&, const MultipleRequestHandler::ResponseMap&);
+    typedef void (*ResponseCallback)(ControlConnection*, const T&, const MultipleRequestCallback::ResponseMap&);
 
-    ControlMultipleRequestHandler(ControlConnection* control_connection,
+    ControlMultipleRequestCallback(ControlConnection* control_connection,
                                   ResponseCallback response_callback,
                                   const T& data)
-        : MultipleRequestHandler(control_connection->connection_)
+        : MultipleRequestCallback(control_connection->connection_)
         , control_connection_(control_connection)
         , response_callback_(response_callback)
         , data_(data) {}
 
-    virtual void on_set(const MultipleRequestHandler::ResponseMap& responses);
+    void execute_query(const std::string& index, const std::string& query);
+
+    virtual void on_set(const MultipleRequestCallback::ResponseMap& responses);
 
     virtual void on_error(CassError code, const std::string& message) {
       control_connection_->handle_query_failure(code, message);
@@ -109,20 +117,21 @@ private:
   struct UnusedData {};
 
   template<class T>
-  class ControlHandler : public Handler {
+  class ControlCallback : public SimpleRequestCallback {
   public:
     typedef void (*ResponseCallback)(ControlConnection*, const T&, Response*);
 
-    ControlHandler(const Request* request,
-                   ControlConnection* control_connection,
-                   ResponseCallback response_callback,
-                   const T& data)
-      : Handler(request)
+    ControlCallback(const Request::ConstPtr& request,
+                    ControlConnection* control_connection,
+                    ResponseCallback response_callback,
+                    const T& data)
+      : SimpleRequestCallback(request)
       , control_connection_(control_connection)
       , response_callback_(response_callback)
-      , data_(data) {}
+      , data_(data) { }
 
-    virtual void on_set(ResponseMessage* response) {
+  private:
+    virtual void on_internal_set(ResponseMessage* response) {
       Response* response_body = response->response_body().get();
       if (control_connection_->handle_query_invalid_response(response_body)) {
         return;
@@ -130,11 +139,11 @@ private:
       response_callback_(control_connection_, data_, response_body);
     }
 
-    virtual void on_error(CassError code, const std::string& message) {
+    virtual void on_internal_error(CassError code, const std::string& message) {
       control_connection_->handle_query_failure(code, message);
     }
 
-    virtual void on_timeout() {
+    virtual void on_internal_timeout() {
       control_connection_->handle_query_timeout();
     }
 
@@ -145,11 +154,11 @@ private:
   };
 
   struct RefreshNodeData {
-    RefreshNodeData(const SharedRefPtr<Host>& host,
+    RefreshNodeData(const Host::Ptr& host,
                     bool is_new_node)
       : host(host)
       , is_new_node(is_new_node) {}
-    SharedRefPtr<Host> host;
+    Host::Ptr host;
     bool is_new_node;
   };
 
@@ -171,6 +180,11 @@ private:
     bool is_aggregate;
   };
 
+  enum UpdateHostType {
+    ADD_HOST,
+    UPDATE_HOST_AND_BUILD
+  };
+
   void schedule_reconnect(uint64_t ms = 0);
   void reconnect(bool retry_current_host);
 
@@ -189,14 +203,14 @@ private:
   void query_meta_hosts();
   static void on_query_hosts(ControlConnection* control_connection,
                              const UnusedData& data,
-                             const MultipleRequestHandler::ResponseMap& responses);
+                             const MultipleRequestCallback::ResponseMap& responses);
 
   void query_meta_schema();
   static void on_query_meta_schema(ControlConnection* control_connection,
                                 const UnusedData& data,
-                                const MultipleRequestHandler::ResponseMap& responses);
+                                const MultipleRequestCallback::ResponseMap& responses);
 
-  void refresh_node_info(SharedRefPtr<Host> host,
+  void refresh_node_info(Host::Ptr host,
                          bool is_new_node,
                          bool query_tokens = false);
   static void on_refresh_node_info(ControlConnection* control_connection,
@@ -206,7 +220,7 @@ private:
                                        const RefreshNodeData& data,
                                        Response* response);
 
-  void update_node_info(SharedRefPtr<Host> host, const Row* row);
+  void update_node_info(Host::Ptr host, const Row* row, UpdateHostType type);
 
   void refresh_keyspace(const StringRef& keyspace_name);
   static void on_refresh_keyspace(ControlConnection* control_connection, const std::string& keyspace_name, Response* response);
@@ -215,7 +229,7 @@ private:
                      const StringRef& table_name);
   static void on_refresh_table_or_view(ControlConnection* control_connection,
                                const RefreshTableData& data,
-                               const MultipleRequestHandler::ResponseMap& responses);
+                               const MultipleRequestCallback::ResponseMap& responses);
 
   void refresh_type(const StringRef& keyspace_name,
                     const StringRef& type_name);
@@ -239,11 +253,10 @@ private:
   ScopedPtr<QueryPlan> query_plan_;
   Host::Ptr current_host_;
   int protocol_version_;
+  VersionNumber cassandra_version_;
   std::string last_connection_error_;
-  bool should_query_tokens_;
-
-  static Address bind_any_ipv4_;
-  static Address bind_any_ipv6_;
+  bool use_schema_;
+  bool token_aware_routing_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(ControlConnection);

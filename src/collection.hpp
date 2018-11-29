@@ -20,6 +20,7 @@
 #include "cassandra.h"
 #include "data_type.hpp"
 #include "encode.hpp"
+#include "external.hpp"
 #include "buffer.hpp"
 #include "ref_counted.hpp"
 #include "types.hpp"
@@ -75,6 +76,7 @@ public:
   APPEND_TYPE(CassUuid)
   APPEND_TYPE(CassInet)
   APPEND_TYPE(CassDecimal)
+  APPEND_TYPE(CassDuration)
 
 #undef APPEND_TYPE
 
@@ -138,6 +140,8 @@ private:
 };
 
 } // namespace cass
+
+EXTERNAL_TYPE(cass::Collection, CassCollection)
 
 #endif
 
