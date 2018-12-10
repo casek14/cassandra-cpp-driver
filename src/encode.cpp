@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -20,8 +20,7 @@
 
 namespace cass {
 
-static char* encode_vint(char* output, uint64_t value, size_t value_size)
-{
+static char* encode_vint(char* output, uint64_t value, size_t value_size) {
   if (value_size == 1) {
     // This is just a one byte value; write it and get out.
     *output = value;

@@ -1,3 +1,156 @@
+2.10.0
+===========
+
+Bug Fixes
+--------
+* [CPP-648] Attempting to get the metrics before the session is connected will crash (existing issue)
+* [CPP-654] Use Boost atomics when building drivers for Visual Studio 2012 x86
+* [CPP-666] Metadata crash in schema metadata null tests
+* [CPP-667] Timer handles still referenced
+* [CPP-668] Unit test `ClusterUnitTest.ReconnectUpdateHosts` can hang
+* [CPP-669] Result response's metadata can reference a prepared response that's already been freed
+* [CPP-670] Unresolved references when built against libressl
+* [CPP-672] Fix memory issues found via `-fstanitize=address`
+* [CPP-673] Cluster can hang attempting to close during reconnection
+* [CPP-675] Chained callback should only call a single callback once
+* [CPP-678] Fix Cassandra version for DSE 6.X releases
+* [CPP-687] Fixing recovery of remote DC host
+* [CPP-692] Fix C++98 compiler issues
+* [CPP-693] Ensure materialized view metadata is valid before retrieving base table
+
+Other
+--------
+* [CPP-611] Reduce coalesce delay to better support latency workloads
+* [CPP-615] Remove support for protocols v1 and v2
+* [CPP-652] Decouple listeners from connection/initialization
+* [CPP-653] Synchronously propagate keyspace updates
+
+2.10.0-beta1
+===========
+
+Features
+--------
+* [CPP-360] Added the ability to specify custom memory allocators using
+  `cass_alloc_set_functions()`
+* [CPP-417] Added speculative execution metrics which can be obtained using
+  `cass_session_get_speculative_execution_metrics()`
+* [CPP-404] Performance: Shared-nothing I/O workers (new internal architecture)
+* [CPP-441] Move IO thread request scheduling to a "pull" model
+* [CPP-453] Move token map calculation off the session thread
+* [CPP-466] Token aware routing replicas are now randomly shuffled by default
+  instead of using a random index
+* [CPP-492] Support execution profiles
+* [CPP-499] Allow binding local address of connections
+* [CPP-515] Remove support for libuv v0.10.x
+* [CPP-518] Thread and connection pool refactor
+* [CPP-616] Handle libuv v1.20.4+ version file updates
+
+Bug Fixes
+--------
+* [CPP-437] Fixed batch encoding performance regression
+* [CPP-477] Native protocol "support" messages are now properly decoded, but
+  still remain unused
+* [CPP-589] Pathological hashing behavior in stream manager
+* [CPP-590] Execution profiles are copied for every request (expensive to copy)
+* [CPP-662] The timerfd version of MicroTimer doesn't handle zero timeout
+* [CPP-663] Mutex in SessionBase can be destroyed while it's still locked
+* [CPP-665] Memory issue when socket fails to initialize
+
+Other
+--------
+* [CPP-136] Decoding now verifies buffer sizes when processing server responses
+* [CPP-440] Improved encoding performance by preallocating buffers
+* [CPP-444] Fixed const correctness of serialization functions
+* [CPP-476] Replaced `strlen()` with `sizeof()` for static strings
+
+2.9.0
+===========
+
+Features
+--------
+* [CPP-578] Add NO_COMPACT startup option
+
+Other
+--------
+* [CPP-566] Ignore control connection DOWN events if there are open connections
+* [CPP-584] win: Message for Boost v1.66.0+ using CMake v3.10.x or lower
+
+2.8.1
+===========
+
+Bug Fixes
+--------
+* [CPP-572] DC aware policy plan returns hosts that are not connected
+
+Other
+--------
+* [CPP-563] Re-add randomization determination during configuration
+
+2.8.0
+===========
+
+Features
+--------
+* [CPP-393] Allow prepared statements to be prepared on all nodes
+* [CPP-394] Prepare statements on UP/ADD events
+* [CPP-439] Support OpenSSL 1.1
+* [CPP-512] Include hash of result set metadata in prepared statement id
+* [CPP-528] Per-query (and per-batch) keyspace support
+
+Bug Fixes
+--------
+* [CPP-368] API Functions that take strings now check for NULL and replace it
+  with an empty string
+* [CPP-438] Broken build with GCC 7 and OpenSSL 1.1
+* [CPP-501] Schema metadata is corrupted when views and indexes exist for a
+  table
+* [CPP-503] Schema meta race condition when a view is dropped from a table
+* [CPP-535] Schema metadata views are not properly updated during drop event
+* [CPP-540] NULL columns in table/view metadata caused by side-effect in a
+  compiled out assertion
+* [CPP-543] Fix dllimport/dllexport
+* [CPP-546] Result metadata callback casting requests to invalid types
+* [CPP-547] Pool request callback attempting to return a deleted connection
+
+Other
+-------
+* [CPP-432] Removed dense table 'empty' columns from metadata
+* [CPP-449] Update vc_build.bat to include automated build for Visual Studio
+  2017
+* [CPP-478] Renamed the class `SpeculativeExecution` to `RequestExection` to
+  reduce confusion when it appears in driver logs
+* [CPP-523] Use arc4random or getrandom instead of /dev/urandom (if available)
+* [CPP-526] Add a mutable wrapper around the request object
+* [CPP-538] Deprecate watermarks
+
+2.7.1
+===========
+
+Bug Fixes
+--------
+* [CPP-473] Missing symbol cass_cluster_set_queue_size_log
+* [CPP-486] Compiler warning 'implicit-fallthrough' causing build errors
+* [CPP-491] Unintentional switch case fallthrough in `RequestCallback`
+* [CPP-496] CassWriteType CDC and VIEW missing
+* [CPP-502] Incorrectly exported symbols cass_error_result_responses_received / required
+* [CPP-513] Copy-on-write keyspace logic is incorrect
+* [CPP-514] Prepared Statement Crash
+
+2.7.0
+===========
+
+Features
+--------
+* Added beta support for protocol v5 which can be enabled using
+  `cass_cluster_set_use_beta_protocol_version()`
+
+Other
+--------
+* Duration type needs to use `int64_t` for the nanos component (CPP-454)
+* Heavy load when updating token maps on node addition (CPP-460)
+* Adding a node breaks token map reconstruction (and can cause long delays)
+  (CPP-464)
+
 2.6.0
 ===========
 
@@ -23,7 +176,6 @@ Other
 * Fixed issue where single quote custom types (e.g.
   'org.apache.cassandra.db.marshal.LexicalUUIDType') would be incorrectly
   returned as a UDT data type instead of as a custom data type (CPP-431)
-
 
 2.5.0
 ===========
@@ -382,7 +534,7 @@ Nov 20, 2014
 Features
 --------
 * Added SSL support
-* Added token-aware load balancing. It''s enable by default. It can
+* Added token-aware load balancing. It''s enabled by default. It can
   be disable using `cass_cluster_set_token_aware_routing()`.
 * Added functions to get schema metadata, `cass_session_get_schema()` can
   be use to get a snapshot of the schema metadata and `cass_meta_*()` functions
@@ -474,7 +626,7 @@ Bug Fixes
 * Fixed issue where connections would log "'Timed out during startup' error on startup for ..."
   when a Session was closed while a connection was during its startup process
 * Fixed Row and collections iterator so they return the first and last item properly
-* Improved logic for creating new connections so it''s based request throughput
+* Improved logic for creating new connections so it''s based on request throughput
 
 Other
 ---------

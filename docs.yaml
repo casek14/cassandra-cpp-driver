@@ -2,11 +2,14 @@ title:   DataStax C/C++ Driver
 summary: DataStax C++ Driver for Apache Cassandra Documentation
 homepage: http://datastax.github.io/cpp-driver/
 sections:
-  - title:    Features
-    prefix:   /topics
-    type:     markdown
-    files:   'topics/**/*.md'
-
+  - title:     Features
+    prefix:    /topics
+    type:      markdown
+    files:     'topics/**/*.md'
+  - title:     Changelog
+    prefix:    /changelog
+    type:      markdown
+    files:     'CHANGELOG.md'
   - title:     API docs
     prefix:    /api
     type:      doxygen
@@ -39,7 +42,19 @@ rewrites:
   - http://pkgs.repoforge.org/git/: https://dl.fedoraproject.org/pub/epel/
   - http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el5.rf.i386.rpm: http://dl.fedoraproject.org/pub/epel/5/i386/epel-release-5-4.noarch.rpm
   - http://pkgs.repoforge.org/rpmforge-release/rpmforge-release-0.5.3-1.el5.rf.x86_64.rpm: http://dl.fedoraproject.org/pub/epel/5/x86_64/epel-release-5-4.noarch.rpm
+  - ../../vc_build.bat: https://github.com/datastax/cpp-driver/blob/master/vc_build.bat
+  - https://github.com/datastax/cpp-driver/tree/2.6.0/examples/duration/duration.c: https://github.com/datastax/cpp-driver/blob/master/examples/duration/duration.c
+  - http://www.datastax.com/documentation/cassandra/2.0/cassandra/dml/dml_config_consistency_c.html: https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlConfigConsistency.html
+  - ^examples/(.*): https://github.com/datastax/cpp-driver/blob/master/examples/\1
 versions:
+  - name: 2.10
+    ref: 2.10.0
+  - name: 2.9
+    ref: 2.9.0
+  - name: 2.8
+    ref: 2.8.1
+  - name: 2.7
+    ref: 2.7.1
   - name: 2.6
     ref: 2.6.0
   - name: 2.5

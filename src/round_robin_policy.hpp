@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -28,14 +28,14 @@ namespace cass {
 class RoundRobinPolicy : public LoadBalancingPolicy {
 public:
   RoundRobinPolicy()
-    : hosts_(new HostVec)
+    : hosts_(Memory::allocate<HostVec>())
     , index_(0) { }
 
   virtual void init(const Host::Ptr& connected_host, const HostMap& hosts, Random* random);
 
   virtual CassHostDistance distance(const Host::Ptr& host) const;
 
-  virtual QueryPlan* new_query_plan(const std::string& connected_keyspace,
+  virtual QueryPlan* new_query_plan(const String& keyspace,
                                     RequestHandler* request_handler,
                                     const TokenMap* token_map);
 
@@ -44,7 +44,7 @@ public:
   virtual void on_up(const Host::Ptr& host);
   virtual void on_down(const Host::Ptr& host);
 
-  virtual LoadBalancingPolicy* new_instance() { return new RoundRobinPolicy(); }
+  virtual LoadBalancingPolicy* new_instance() { return Memory::allocate<RoundRobinPolicy>(); }
 
 private:
   class RoundRobinQueryPlan : public QueryPlan {

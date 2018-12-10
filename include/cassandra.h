@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -18,13 +18,14 @@
 #define __CASSANDRA_H_INCLUDED__
 
 #include <stddef.h>
+#include <stdint.h>
 
 #if !defined(CASS_STATIC)
 #  if (defined(WIN32) || defined(_WIN32))
 #    if defined(CASS_BUILDING)
 #      define CASS_EXPORT __declspec(dllexport)
 #    else
-#      define CASS_EXPORT __declspec(dllexport)
+#      define CASS_EXPORT __declspec(dllimport)
 #    endif
 #  elif (defined(__SUNPRO_C)  || defined(__SUNPRO_CC)) && !defined(CASS_STATIC)
 #    define CASS_EXPORT __global
@@ -51,7 +52,7 @@
  */
 
 #define CASS_VERSION_MAJOR 2
-#define CASS_VERSION_MINOR 6
+#define CASS_VERSION_MINOR 10
 #define CASS_VERSION_PATCH 0
 #define CASS_VERSION_SUFFIX ""
 
@@ -64,57 +65,17 @@ typedef enum { cass_false = 0, cass_true = 1 } cass_bool_t;
 typedef float cass_float_t;
 typedef double cass_double_t;
 
-#if defined(__INT8_TYPE__) && defined(__UINT8_TYPE__)
-typedef __INT8_TYPE__ cass_int8_t;
-typedef __UINT8_TYPE__ cass_uint8_t;
-#elif defined(__INT8_TYPE__)
-typedef signed __INT8_TYPE__ cass_int8_t;
-typedef unsigned __INT8_TYPE__ cass_uint8_t;
-#else
-typedef signed char cass_int8_t;
-typedef unsigned char cass_uint8_t;
-#endif
+typedef int8_t cass_int8_t;
+typedef uint8_t cass_uint8_t;
 
-#if defined(__INT16_TYPE__) && defined(__UINT16_TYPE__)
-typedef __INT16_TYPE__ cass_int16_t;
-typedef __UINT16_TYPE__ cass_uint16_t;
-#elif defined(__INT16_TYPE__)
-typedef __INT16_TYPE__ cass_int16_t;
-typedef unsigned __INT16_TYPE__ cass_uint16_t;
-#else
-typedef short cass_int16_t;
-typedef unsigned short cass_uint16_t;
-#endif
+typedef int16_t cass_int16_t;
+typedef uint16_t cass_uint16_t;
 
-#if defined(__INT32_TYPE__) && defined(__UINT32_TYPE__)
-typedef __INT32_TYPE__ cass_int32_t;
-typedef __UINT32_TYPE__ cass_uint32_t;
-#elif defined(__INT32_TYPE__)
-typedef __INT32_TYPE__ cass_int32_t;
-typedef unsigned __INT32_TYPE__ cass_uint32_t;
-#else
-typedef int cass_int32_t;
-typedef unsigned int cass_uint32_t;
-#endif
+typedef int32_t cass_int32_t;
+typedef uint32_t cass_uint32_t;
 
-#if defined(__INT64_TYPE__) && defined(__UINT64_TYPE__)
-typedef __INT64_TYPE__ cass_int64_t;
-typedef __UINT64_TYPE__ cass_uint64_t;
-#elif defined(__INT64_TYPE__)
-typedef __INT64_TYPE__ cass_int64_t;
-typedef unsigned __INT64_TYPE__ cass_uint64_t;
-#elif defined(__GNUC__)
-#  if  defined(__x86_64__)
-typedef long int cass_int64_t;
-typedef unsigned long int cass_uint64_t;
-#  else
-typedef long long int cass_int64_t;
-typedef unsigned long long int cass_uint64_t;
-#  endif
-#else
-typedef long long cass_int64_t;
-typedef unsigned long long cass_uint64_t;
-#endif
+typedef int64_t cass_int64_t;
+typedef uint64_t cass_uint64_t;
 
 #define CASS_UINT64_MAX 18446744073709551615ULL
 
@@ -447,26 +408,40 @@ typedef struct CassMetrics_ {
     cass_uint64_t percentile_98th; /**< 98th percentile in microseconds */
     cass_uint64_t percentile_99th; /**< 99the percentile in microseconds */
     cass_uint64_t percentile_999th; /**< 99.9th percentile in microseconds */
-    cass_double_t mean_rate; /**<  Mean rate in requests per second*/
+    cass_double_t mean_rate; /**<  Mean rate in requests per second */
     cass_double_t one_minute_rate; /**< 1 minute rate in requests per second */
-    cass_double_t five_minute_rate; /**<  5 minute rate in requests per second*/
-    cass_double_t fifteen_minute_rate; /**< 15 minute rate in requests per second*/
-  } requests;
+    cass_double_t five_minute_rate; /**<  5 minute rate in requests per second */
+    cass_double_t fifteen_minute_rate; /**< 15 minute rate in requests per second */
+  } requests; /**< Performance request metrics */
 
   struct {
     cass_uint64_t total_connections; /**< The total number of connections */
-    cass_uint64_t available_connections; /**< The number of connections available to take requests */
-    cass_uint64_t exceeded_pending_requests_water_mark; /**< Occurrences when requests exceeded a pool's water mark */
-    cass_uint64_t exceeded_write_bytes_water_mark; /**< Occurrences when number of bytes exceeded a connection's water mark */
-  } stats;
+    cass_uint64_t available_connections; /**< Deprecated */
+    cass_uint64_t exceeded_pending_requests_water_mark; /**< Deprecated */
+    cass_uint64_t exceeded_write_bytes_water_mark; /**< Deprecated */
+  } stats; /**< Diagnostic metrics */
 
   struct {
     cass_uint64_t connection_timeouts; /**< Occurrences of a connection timeout */
-    cass_uint64_t pending_request_timeouts; /** Occurrences of requests that timed out waiting for a connection */
-    cass_uint64_t request_timeouts; /** Occurrences of requests that timed out waiting for a request to finish */
-  } errors;
-
+    cass_uint64_t pending_request_timeouts; /**< Occurrences of requests that timed out waiting for a connection */
+    cass_uint64_t request_timeouts; /**< Occurrences of requests that timed out waiting for a request to finish */
+  } errors; /**< Error metrics */
 } CassMetrics;
+
+typedef struct CassSpeculativeExecutionMetrics_ {
+  cass_uint64_t min; /**< Minimum in microseconds */
+  cass_uint64_t max; /**< Maximum in microseconds */
+  cass_uint64_t mean; /**< Mean in microseconds */
+  cass_uint64_t stddev; /**< Standard deviation in microseconds */
+  cass_uint64_t median; /**< Median in microseconds */
+  cass_uint64_t percentile_75th; /**< 75th percentile in microseconds */
+  cass_uint64_t percentile_95th; /**< 95th percentile in microseconds */
+  cass_uint64_t percentile_98th; /**< 98th percentile in microseconds */
+  cass_uint64_t percentile_99th; /**< 99the percentile in microseconds */
+  cass_uint64_t percentile_999th; /**< 99.9th percentile in microseconds */
+  cass_uint64_t count; /**< The number of aborted speculative retries */
+  cass_double_t percentage; /**< Fraction of requests that are aborted speculative retries */
+} CassSpeculativeExecutionMetrics;
 
 typedef enum CassConsistency_ {
   CASS_CONSISTENCY_UNKNOWN      = 0xFFFF,
@@ -502,13 +477,15 @@ typedef enum CassConsistency_ {
 /* @endcond */
 
 typedef enum CassWriteType_ {
-  CASS_WRITE_TYPE_UKNOWN,
+  CASS_WRITE_TYPE_UNKNOWN,
   CASS_WRITE_TYPE_SIMPLE,
   CASS_WRITE_TYPE_BATCH,
   CASS_WRITE_TYPE_UNLOGGED_BATCH,
   CASS_WRITE_TYPE_COUNTER,
   CASS_WRITE_TYPE_BATCH_LOG,
-  CASS_WRITE_TYPE_CAS
+  CASS_WRITE_TYPE_CAS,
+  CASS_WRITE_TYPE_VIEW,
+  CASS_WRITE_TYPE_CDC
 } CassWriteType;
 
 #define CASS_WRITE_TYPE_MAPPING(XX) \
@@ -517,7 +494,9 @@ typedef enum CassWriteType_ {
   XX(CASS_WRITE_TYPE_UNLOGGED_BATCH, "UNLOGGED_BATCH") \
   XX(CASS_WRITE_TYPE_COUNTER, "COUNTER") \
   XX(CASS_WRITE_TYPE_BATCH_LOG, "BATCH_LOG") \
-  XX(CASS_WRITE_TYPE_CAS, "CAS")
+  XX(CASS_WRITE_TYPE_CAS, "CAS") \
+  XX(CASS_WRITE_TYPE_VIEW, "VIEW") \
+  XX(CASS_WRITE_TYPE_CDC, "CDC")
 
 /* @cond IGNORE */
 #define CASS_WRITE_TYPE_MAP CASS_WRITE_TYPE_MAPPING /* Deprecated */
@@ -635,12 +614,20 @@ typedef enum CassLogLevel_ {
   /* @endcond */
 } CassLogLevel;
 
-typedef enum CassSslVerifyFlags {
+typedef enum CassSslVerifyFlags_ {
   CASS_SSL_VERIFY_NONE              = 0x00,
   CASS_SSL_VERIFY_PEER_CERT         = 0x01,
   CASS_SSL_VERIFY_PEER_IDENTITY     = 0x02,
   CASS_SSL_VERIFY_PEER_IDENTITY_DNS = 0x04
 } CassSslVerifyFlags;
+
+typedef enum CassProtocolVersion_ {
+  CASS_PROTOCOL_VERSION_V1    = 0x01, /**< Deprecated */
+  CASS_PROTOCOL_VERSION_V2    = 0x02, /**< Deprecated */
+  CASS_PROTOCOL_VERSION_V3    = 0x03,
+  CASS_PROTOCOL_VERSION_V4    = 0x04,
+  CASS_PROTOCOL_VERSION_V5    = 0x05
+} CassProtocolVersion;
 
 typedef enum  CassErrorSource_ {
   CASS_ERROR_SOURCE_NONE,
@@ -684,6 +671,7 @@ typedef enum  CassErrorSource_ {
   XX(CASS_ERROR_SOURCE_LIB, CASS_ERROR_LIB_NOT_ENOUGH_DATA, 31, "Not enough data") \
   XX(CASS_ERROR_SOURCE_LIB, CASS_ERROR_LIB_INVALID_STATE, 32, "Invalid state") \
   XX(CASS_ERROR_SOURCE_LIB, CASS_ERROR_LIB_NO_CUSTOM_PAYLOAD, 33, "No custom payload") \
+  XX(CASS_ERROR_SOURCE_LIB, CASS_ERROR_LIB_EXECUTION_PROFILE_INVALID, 34, "Invalid execution profile specified") \
   XX(CASS_ERROR_SOURCE_SERVER, CASS_ERROR_SERVER_SERVER_ERROR, 0x0000, "Server error") \
   XX(CASS_ERROR_SOURCE_SERVER, CASS_ERROR_SERVER_PROTOCOL_ERROR, 0x000A, "Protocol error") \
   XX(CASS_ERROR_SOURCE_SERVER, CASS_ERROR_SERVER_BAD_CREDENTIALS, 0x0100, "Bad credentials") \
@@ -764,10 +752,50 @@ typedef struct CassLogMessage_ {
  * @param[in] data user defined data provided when the callback
  * was registered.
  *
- * @see cass_log_set_callback();
+ * @see cass_log_set_callback()
  */
 typedef void (*CassLogCallback)(const CassLogMessage* message,
                                 void* data);
+
+/**
+ * A custom malloc function. This function should allocate "size" bytes and
+ * return a pointer to that memory
+ *
+ * @param[in] size The size of the memory to allocate
+ *
+ * @see CassFreeFunction
+ * @see cass_alloc_set_functions()
+ */
+typedef void* (*CassMallocFunction)(size_t size);
+
+/**
+ * A custom realloc function. This function attempts to change the size of the
+ * memory pointed to by "ptr". If the memory cannot be resized then new memory
+ * should be allocated and contain the contents of the original memory at "ptr".
+ *
+ * @param[in] ptr A pointer to the original memory. If NULL it should behave the
+ * same as "CassMallocFunction"
+ * @param[in] size The size of the memory to allocate/resize.
+ *
+ * @see CassMallocFunction
+ * @see CassFreeFunction
+ * @see cass_alloc_set_functions()
+ */
+typedef void* (*CassReallocFunction)(void* ptr, size_t size);
+
+/**
+ * A custom free function. This function deallocates the memory pointed to by
+ * "ptr" that was previously allocated by a "CassMallocFunction" or
+ * "CassReallocFunction" function.
+ *
+ * @param[in] ptr A pointer to memory that should be deallocated. If NULL then
+ * this will perform no operation.
+ *
+ * @see CassMallocFunction
+ * @see CassReallocFunction
+ * @see cass_alloc_set_functions()
+ */
+typedef void (*CassFreeFunction)(void* ptr);
 
 /**
  * An authenticator.
@@ -782,7 +810,8 @@ typedef struct CassAuthenticator_ CassAuthenticator;
  *
  * Use cass_authenticator_set_response() to set the response token.
  *
- * Use cass_authenticator_set_error() if an error occured during initialization.
+ * Use cass_authenticator_set_error() if an error occurred during
+ * initialization.
  *
  * @param[in] auth
  * @param[in] data
@@ -796,7 +825,8 @@ typedef void (*CassAuthenticatorInitialCallback)(CassAuthenticator* auth,
  *
  * Use cass_authenticator_set_response() to set the response token.
  *
- * Use cass_authenticator_set_error() if an error occured during the challenge.
+ * Use cass_authenticator_set_error() if an error occurred during the
+ * challenge.
  *
  * @param[in] auth
  * @param[in] data
@@ -811,7 +841,7 @@ typedef void (*CassAuthenticatorChallengeCallback)(CassAuthenticator* auth,
  * A callback used to indicate the success of the authentication
  * exchange.
  *
- * Use cass_authenticator_set_error() if an error occured while evaluating
+ * Use cass_authenticator_set_error() if an error occurred while evaluating
  * the success token.
  *
  * @param[in] auth
@@ -851,6 +881,526 @@ typedef struct CassAuthenticatorCallbacks_ {
   CassAuthenticatorSuccessCallback success_callback;
   CassAuthenticatorCleanupCallback cleanup_callback;
 } CassAuthenticatorCallbacks;
+
+/***********************************************************************************
+ *
+ * Execution Profile
+ *
+ ***********************************************************************************/
+
+/**
+ * An execution profile object provides a mechanism to group together a set of
+ * configuration options and reuse them across different statement executions.
+ * This feature is useful when dealing with different query workloads.
+ *
+ * @struct CassExecProfile
+ */
+typedef struct CassExecProfile_ CassExecProfile;
+
+/**
+ * Creates a new execution profile.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @return Returns a execution profile that must be freed.
+ *
+ * @see cass_execution_profile_free()
+ */
+CASS_EXPORT CassExecProfile*
+cass_execution_profile_new();
+
+/**
+ * Frees a execution profile instance.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ */
+CASS_EXPORT void
+cass_execution_profile_free(CassExecProfile* profile);
+
+/**
+ * Sets the timeout waiting for a response from a node.
+ *
+ * <b>Default:</b> Disabled (uses the cluster request timeout)
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] timeout_ms Request timeout in milliseconds. Use 0 for no timeout
+ * or CASS_UINT64_MAX to disable.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_statement_set_request_timeout()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_request_timeout(CassExecProfile* profile,
+                                           cass_uint64_t timeout_ms);
+
+/**
+ * Sets the consistency level.
+ *
+ * <b>Default:</b> Disabled (uses the default consistency)
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] consistency
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_statement_set_consistency()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_consistency(CassExecProfile* profile,
+                                       CassConsistency consistency);
+
+/**
+ * Sets the serial consistency level.
+ *
+ * <b>Default:</b> Disabled (uses the default serial consistency)
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] serial_consistency
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_statement_set_serial_consistency()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_serial_consistency(CassExecProfile* profile,
+                                              CassConsistency serial_consistency);
+
+/**
+ * Configures the execution profile to use round-robin load balancing.
+ *
+ * The driver discovers all nodes in a cluster and cycles through
+ * them per request. All are considered 'local'.
+ *
+ * <b>Note:</b> Profile-based load balancing policy is disabled by default;
+ * cluster load balancing policy is used when profile does not contain a policy.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_load_balance_round_robin()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_load_balance_round_robin(CassExecProfile* profile);
+
+/**
+ * Configures the execution profile to use DC-aware load balancing.
+ * For each query, all live nodes in a primary 'local' DC are tried first,
+ * followed by any node from other DCs.
+ *
+ * <b>Note:</b> Profile-based load balancing policy is disabled by default;
+ * cluster load balancing policy is used when profile does not contain a policy.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] local_dc The primary data center to try first
+ * @param[in] used_hosts_per_remote_dc The number of hosts used in each remote
+ * DC if no hosts are available in the local dc
+ * @param[in] allow_remote_dcs_for_local_cl Allows remote hosts to be used if no
+ * local dc hosts are available and the consistency level is LOCAL_ONE or
+ * LOCAL_QUORUM
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_load_balance_dc_aware()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_load_balance_dc_aware(CassExecProfile* profile,
+                                                 const char* local_dc,
+                                                 unsigned used_hosts_per_remote_dc,
+                                                 cass_bool_t allow_remote_dcs_for_local_cl);
+
+/**
+ * Same as cass_execution_profile_set_load_balance_dc_aware(), but with lengths
+ * for string parameters.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] local_dc
+ * @param[in] local_dc_length
+ * @param[in] used_hosts_per_remote_dc
+ * @param[in] allow_remote_dcs_for_local_cl
+ * @return same as cass_execution_profile_set_load_balance_dc_aware()
+ *
+ * @see cass_execution_profile_set_load_balance_dc_aware()
+ * @see cass_cluster_set_load_balance_dc_aware_n()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_load_balance_dc_aware_n(CassExecProfile* profile,
+                                                   const char* local_dc,
+                                                   size_t local_dc_length,
+                                                   unsigned used_hosts_per_remote_dc,
+                                                   cass_bool_t allow_remote_dcs_for_local_cl);
+
+/**
+ * Configures the execution profile to use token-aware request routing or not.
+ *
+ * <b>Important:</b> Token-aware routing depends on keyspace metadata.
+ * For this reason enabling token-aware routing will also enable retrieving
+ * and updating keyspace schema metadata.
+ *
+ * <b>Default:</b> cass_true (enabled).
+ *
+ * This routing policy composes the base routing policy, routing
+ * requests first to replicas on nodes considered 'local' by
+ * the base load balancing policy.
+ *
+ * <b>Note:</b> Execution profiles use the cluster-level load balancing policy
+ * unless enabled. This setting is not applicable unless a load balancing policy
+ * is enabled on the execution profile.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] enabled
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_token_aware_routing()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_token_aware_routing(CassExecProfile* profile,
+                                               cass_bool_t enabled);
+
+/**
+ * Configures the execution profile's token-aware routing to randomly shuffle
+ * replicas. This can reduce the effectiveness of server-side caching, but it
+ * can better distribute load over replicas for a given partition key.
+ *
+ * <b>Note:</b> Token-aware routing must be enabled and a load balancing policy
+ * must be enabled on the execution profile for the setting to be applicable.
+ *
+ * <b>Default:</b> cass_true (enabled).
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] enabled
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_token_aware_routing_shuffle_replicas()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_token_aware_routing_shuffle_replicas(CassExecProfile* profile,
+                                                                cass_bool_t enabled);
+
+/**
+ * Configures the execution profile to use latency-aware request routing or not.
+ *
+ * <b>Note:</b> Execution profiles use the cluster-level load balancing policy
+ * unless enabled. This setting is not applicable unless a load balancing policy
+ * is enabled on the execution profile.
+ *
+ * <b>Default:</b> cass_false (disabled).
+ *
+ * This routing policy is a top-level routing policy. It uses the
+ * base routing policy to determine locality (dc-aware) and/or
+ * placement (token-aware) before considering the latency.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] enabled
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_latency_aware_routing()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_latency_aware_routing(CassExecProfile* profile,
+                                                 cass_bool_t enabled);
+
+/**
+ * Configures the execution profile's settings for latency-aware request
+ * routing.
+ *
+ * <b>Note:</b> Execution profiles use the cluster-level load balancing policy
+ * unless enabled. This setting is not applicable unless a load balancing policy
+ * is enabled on the execution profile.
+ *
+ * <b>Defaults:</b>
+ *
+ * <ul>
+ *   <li>exclusion_threshold: 2.0</li>
+ *   <li>scale_ms: 100 milliseconds</li>
+ *   <li>retry_period_ms: 10,000 milliseconds (10 seconds)</li>
+ *   <li>update_rate_ms: 100 milliseconds</li>
+ *   <li>min_measured: 50</li>
+ * </ul>
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] exclusion_threshold Controls how much worse the latency must be
+ * compared to the average latency of the best performing node before it
+ * penalized.
+ * @param[in] scale_ms Controls the weight given to older latencies when
+ * calculating the average latency of a node. A bigger scale will give more
+ * weight to older latency measurements.
+ * @param[in] retry_period_ms The amount of time a node is penalized by the
+ * policy before being given a second chance when the current average latency
+ * exceeds the calculated threshold
+ * (exclusion_threshold * best_average_latency).
+ * @param[in] update_rate_ms The rate at  which the best average latency is
+ * recomputed.
+ * @param[in] min_measured The minimum number of measurements per-host required
+ * to be considered by the policy.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_latency_aware_routing_settings()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_latency_aware_routing_settings(CassExecProfile* profile,
+                                                          cass_double_t exclusion_threshold,
+                                                          cass_uint64_t scale_ms,
+                                                          cass_uint64_t retry_period_ms,
+                                                          cass_uint64_t update_rate_ms,
+                                                          cass_uint64_t min_measured);
+
+/**
+ * Sets/Appends whitelist hosts for the execution profile. The first call sets
+ * the whitelist hosts and any subsequent calls appends additional hosts.
+ * Passing an empty string will clear and disable the whitelist. White space is
+ * striped from the hosts.
+ *
+ * This policy filters requests to all other policies, only allowing requests
+ * to the hosts contained in the whitelist. Any host not in the whitelist will
+ * be ignored and a connection will not be established. This policy is useful
+ * for ensuring that the driver will only connect to a predefined set of hosts.
+ *
+ * Examples: "127.0.0.1" "127.0.0.1,127.0.0.2"
+ *
+ * <b>Note:</b> Execution profiles use the cluster-level load balancing policy
+ * unless enabled. This setting is not applicable unless a load balancing policy
+ * is enabled on the execution profile.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] hosts A comma delimited list of addresses. An empty string will
+ * clear the whitelist hosts. The string is copied into the cluster
+ * configuration; the memory pointed to by this parameter can be freed after
+ * this call.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_whitelist_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_whitelist_filtering(CassExecProfile* profile,
+                                               const char* hosts);
+
+/**
+ * Same as cass_execution_profile_set_whitelist_filtering(), but with lengths
+ * for string parameters.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] hosts
+ * @param[in] hosts_length
+ * @return same as cass_execution_profile_set_whitelist_filtering()
+ *
+ * @see cass_execution_profile_set_whitelist_filtering()
+ * @see cass_cluster_set_whitelist_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_whitelist_filtering_n(CassExecProfile* profile,
+                                                 const char* hosts,
+                                                 size_t hosts_length);
+
+/**
+ * Sets/Appends blacklist hosts for the execution profile. The first call sets
+ * the blacklist hosts and any subsequent calls appends additional hosts.
+ * Passing an empty string will clear and disable the blacklist. White space is
+ * striped from the hosts.
+ *
+ * This policy filters requests to all other policies, only allowing requests
+ * to the hosts not contained in the blacklist. Any host in the blacklist will
+ * be ignored and a connection will not be established. This policy is useful
+ * for ensuring that the driver will not connect to a predefined set of hosts.
+ *
+ * Examples: "127.0.0.1" "127.0.0.1,127.0.0.2"
+ *
+ * <b>Note:</b> Execution profiles use the cluster-level load balancing policy
+ * unless enabled. This setting is not applicable unless a load balancing policy
+ * is enabled on the execution profile.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] hosts A comma delimited list of addresses. An empty string will
+ * clear the blacklist hosts. The string is copied into the cluster
+ * configuration; the memory pointed to by this parameter can be freed after
+ * this call.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_blacklist_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_blacklist_filtering(CassExecProfile* profile,
+                                               const char* hosts);
+
+/**
+ * Same as cass_execution_profile_set_blacklist_filtering(), but with lengths
+ * for string parameters.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] hosts
+ * @param[in] hosts_length
+ * @return same as cass_execution_profile_set_blacklist_filtering_hosts()
+ *
+ * @see cass_execution_profile_set_blacklist_filtering()
+ * @see cass_cluster_set_blacklist_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_blacklist_filtering_n(CassExecProfile* profile,
+                                                 const char* hosts,
+                                                 size_t hosts_length);
+
+/**
+ * Same as cass_execution_profile_set_whitelist_filtering(), but whitelist all
+ * hosts of a dc.
+ *
+ * Examples: "dc1", "dc1,dc2"
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] dcs A comma delimited list of dcs. An empty string will clear the
+ * whitelist dcs. The string is copied into the cluster configuration; the
+ * memory pointed to by this parameter can be freed after this call.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_whitelist_dc_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_whitelist_dc_filtering(CassExecProfile* profile,
+                                                  const char* dcs);
+
+/**
+ * Same as cass_execution_profile_set_whitelist_dc_filtering(), but with lengths
+ * for string parameters.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] dcs
+ * @param[in] dcs_length
+ * @return same as cass_execution_profile_set_whitelist_dc_filtering()
+ *
+ * @see cass_execution_profile_set_whitelist_dc_filtering()
+ * @see cass_cluster_set_whitelist_dc_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_whitelist_dc_filtering_n(CassExecProfile* profile,
+                                                    const char* dcs,
+                                                    size_t dcs_length);
+
+/**
+ * Same as cass_execution_profile_set_blacklist_filtering(), but blacklist all
+ * hosts of a dc.
+ *
+ * Examples: "dc1", "dc1,dc2"
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] dcs A comma delimited list of dcs. An empty string will clear the
+ * blacklist dcs. The string is copied into the cluster configuration; the
+ * memory pointed to by this parameter can be freed after this call.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_execution_profile_set_blacklist_filtering()
+ * @see cass_cluster_set_blacklist_dc_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_blacklist_dc_filtering(CassExecProfile* profile,
+                                                  const char* dcs);
+
+/**
+ * Same as cass_execution_profile_set_blacklist_dc_filtering(), but with lengths
+ * for string parameters.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] dcs
+ * @param[in] dcs_length
+ * @return same as cass_execution_profile_set_blacklist_dc_filtering()
+ *
+ * @see cass_execution_profile_set_blacklist_dc_filtering()
+ * @see cass_cluster_set_blacklist_dc_filtering()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_blacklist_dc_filtering_n(CassExecProfile* profile,
+                                                    const char* dcs,
+                                                    size_t dcs_length);
+
+/**
+ * Sets the execution profile's retry policy.
+ *
+ * <b>Note:</b> Profile-based retry policy is disabled by default; cluster retry
+ * policy is used when profile does not contain a policy unless the retry policy
+ * was explicitly set on the batch/statement request.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] retry_policy NULL will clear retry policy from execution profile
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_retry_policy()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_retry_policy(CassExecProfile* profile,
+                                        CassRetryPolicy* retry_policy);
+
+/**
+ * Enable constant speculative executions with the supplied settings for the
+ * execution profile.
+ *
+ * <b>Note:</b> Profile-based speculative execution policy is disabled by
+ * default; cluster speculative execution policy is used when profile does not
+ * contain a policy.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @param[in] constant_delay_ms
+ * @param[in] max_speculative_executions
+ * @return CASS_OK if successful, otherwise an error occurred
+ *
+ * @see cass_cluster_set_constant_speculative_execution_policy()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_constant_speculative_execution_policy(CassExecProfile* profile,
+                                                                 cass_int64_t constant_delay_ms,
+                                                                 int max_speculative_executions);
+
+/**
+ * Disable speculative executions for the execution profile.
+ *
+ * <b>Note:</b> Profile-based speculative execution policy is disabled by
+ * default; cluster speculative execution policy is used when profile does not
+ * contain a policy.
+ *
+ * @public @memberof CassExecProfile
+ *
+ * @param[in] profile
+ * @return CASS_OK if successful, otherwise an error occurred
+ *
+ * @see cass_cluster_set_no_speculative_execution_policy()
+ */
+CASS_EXPORT CassError
+cass_execution_profile_set_no_speculative_execution_policy(CassExecProfile* profile);
 
 /***********************************************************************************
  *
@@ -935,6 +1485,39 @@ cass_cluster_set_port(CassCluster* cluster,
                       int port);
 
 /**
+ * Sets the local address to bind when connecting to the cluster,
+ * if desired.
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] name IP address to bind, or empty string for no binding.
+ * Only numeric addresses are supported; no resolution is done.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_cluster_set_local_address(CassCluster* cluster,
+                               const char* name);
+
+/**
+ * Same as cass_cluster_set_local_address(), but with lengths for string
+ * parameters.
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] name
+ * @param[in] name_length
+ * @return same as cass_cluster_set_local_address()
+ *
+ * @see cass_cluster_set_local_address()
+ */
+CASS_EXPORT CassError
+cass_cluster_set_local_address_n(CassCluster* cluster,
+                                 const char* name,
+                                 size_t name_length);
+
+/**
  * Sets the SSL context and enables SSL.
  *
  * @public @memberof CassCluster
@@ -969,17 +1552,65 @@ cass_cluster_set_authenticator_callbacks(CassCluster* cluster,
  * Sets the protocol version. This will automatically downgrade to the lowest
  * supported protocol version.
  *
- * <b>Default:</b> 4
+ * <b>Default:</b> CASS_PROTOCOL_VERSION_V4
  *
  * @public @memberof CassCluster
  *
  * @param[in] cluster
  * @param[in] protocol_version
  * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_use_beta_protocol_version()
  */
 CASS_EXPORT CassError
 cass_cluster_set_protocol_version(CassCluster* cluster,
                                   int protocol_version);
+
+/**
+ * Use the newest beta protocol version. This currently enables the use of
+ * protocol version v5 (CASS_PROTOCOL_VERSION_V5).
+ *
+ * <b>Default:</b> cass_false
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] enable if false the highest non-beta protocol version will be used
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_cluster_set_use_beta_protocol_version(CassCluster* cluster,
+                                           cass_bool_t enable);
+
+/**
+ * Sets default consistency level of statement.
+ *
+ * <b>Default:</b> CASS_CONSISTENCY_LOCAL_ONE
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] consistency
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_cluster_set_consistency(CassCluster* cluster,
+                             CassConsistency consistency);
+
+/**
+ * Sets default serial consistency level of statement.
+ *
+ * <b>Default:</b> CASS_CONSISTENCY_ANY
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] consistency
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_cluster_set_serial_consistency(CassCluster* cluster,
+                                    CassConsistency consistency);
 
 /**
  * Sets the number of IO threads. This is the number of threads
@@ -1021,29 +1652,16 @@ cass_cluster_set_queue_size_io(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
- * @param[in] cluster
- * @param[in] queue_size
- * @return CASS_OK if successful, otherwise an error occurred.
- */
-CASS_EXPORT CassError
-cass_cluster_set_queue_size_event(CassCluster* cluster,
-                                  unsigned queue_size);
-
-/**
- * Sets the size of the fixed size queue that stores
- * log messages.
- *
- * <b>Default:</b> 8192
- *
- * @public @memberof CassCluster
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
  *
  * @param[in] cluster
  * @param[in] queue_size
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_queue_size_log(CassCluster* cluster,
-                                unsigned queue_size);
+CASS_DEPRECATED(cass_cluster_set_queue_size_event(CassCluster* cluster,
+                                                  unsigned queue_size));
 
 /**
  * Sets the number of connections made to each server in each
@@ -1069,13 +1687,16 @@ cass_cluster_set_core_connections_per_host(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_connections
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_max_connections_per_host(CassCluster* cluster,
-                                          unsigned num_connections);
+CASS_DEPRECATED(cass_cluster_set_max_connections_per_host(CassCluster* cluster,
+                                                          unsigned num_connections));
 
 /**
  * Sets the amount of time to wait before attempting to reconnect.
@@ -1092,6 +1713,44 @@ cass_cluster_set_reconnect_wait_time(CassCluster* cluster,
                                      unsigned wait_time);
 
 /**
+ * Sets the amount of time, in microseconds, to wait for new requests to
+ * coalesce into a single system call. This should be set to a value around
+ * the latency SLA of your application's requests while also considering the
+ * request's roundtrip time. Larger values should be used for throughput
+ * bound workloads and lower values should be used for latency bound
+ * workloads.
+ *
+ * <b>Default:</b> 200 us
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] delay_us
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_cluster_set_coalesce_delay(CassCluster* cluster,
+                                cass_int64_t delay_us);
+
+/**
+ * Sets the ratio of time spent processing new requests versus handling the I/O
+ * and processing of outstanding requests. The range of this setting is 1 to 100,
+ * where larger values allocate more time to processing new requests and smaller
+ * values allocate more time to processing outstanding requests.
+ *
+ * <b>Default:</b> 50
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] ratio
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_cluster_set_new_request_ratio(CassCluster* cluster,
+                                   cass_int32_t ratio);
+
+/**
  * Sets the maximum number of connections that will be created concurrently.
  * Connections are created when the current connections are unable to keep up with
  * request throughput.
@@ -1100,13 +1759,16 @@ cass_cluster_set_reconnect_wait_time(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_connections
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_max_concurrent_creation(CassCluster* cluster,
-                                         unsigned num_connections);
+CASS_DEPRECATED(cass_cluster_set_max_concurrent_creation(CassCluster* cluster,
+                                                         unsigned num_connections));
 
 /**
  * Sets the threshold for the maximum number of concurrent requests in-flight
@@ -1117,13 +1779,16 @@ cass_cluster_set_max_concurrent_creation(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_requests
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_max_concurrent_requests_threshold(CassCluster* cluster,
-                                                   unsigned num_requests);
+CASS_DEPRECATED(cass_cluster_set_max_concurrent_requests_threshold(CassCluster* cluster,
+                                                                   unsigned num_requests));
 
 /**
  * Sets the maximum number of requests processed by an IO worker
@@ -1133,13 +1798,16 @@ cass_cluster_set_max_concurrent_requests_threshold(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_requests
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_max_requests_per_flush(CassCluster* cluster,
-                                        unsigned num_requests);
+CASS_DEPRECATED(cass_cluster_set_max_requests_per_flush(CassCluster* cluster,
+                                                        unsigned num_requests));
 
 /**
  * Sets the high water mark for the number of bytes outstanding
@@ -1150,13 +1818,16 @@ cass_cluster_set_max_requests_per_flush(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_bytes
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_write_bytes_high_water_mark(CassCluster* cluster,
-                                             unsigned num_bytes);
+CASS_DEPRECATED(cass_cluster_set_write_bytes_high_water_mark(CassCluster* cluster,
+                                                             unsigned num_bytes));
 
 /**
  * Sets the low water mark for number of bytes outstanding on a
@@ -1167,13 +1838,16 @@ cass_cluster_set_write_bytes_high_water_mark(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_bytes
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_write_bytes_low_water_mark(CassCluster* cluster,
-                                            unsigned num_bytes);
+CASS_DEPRECATED(cass_cluster_set_write_bytes_low_water_mark(CassCluster* cluster,
+                                                            unsigned num_bytes));
 
 /**
  * Sets the high water mark for the number of requests queued waiting
@@ -1185,13 +1859,16 @@ cass_cluster_set_write_bytes_low_water_mark(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_requests
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_pending_requests_high_water_mark(CassCluster* cluster,
-                                                  unsigned num_requests);
+CASS_DEPRECATED(cass_cluster_set_pending_requests_high_water_mark(CassCluster* cluster,
+                                                                  unsigned num_requests));
 
 /**
  * Sets the low water mark for the number of requests queued waiting
@@ -1203,13 +1880,16 @@ cass_cluster_set_pending_requests_high_water_mark(CassCluster* cluster,
  *
  * @public @memberof CassCluster
  *
+ * @deprecated This is no longer useful and does nothing. Expect this to be
+ * removed in a future release.
+ *
  * @param[in] cluster
  * @param[in] num_requests
  * @return CASS_OK if successful, otherwise an error occurred.
  */
 CASS_EXPORT CassError
-cass_cluster_set_pending_requests_low_water_mark(CassCluster* cluster,
-                                                 unsigned num_requests);
+CASS_DEPRECATED(cass_cluster_set_pending_requests_low_water_mark(CassCluster* cluster,
+                                                                 unsigned num_requests));
 
 /**
  * Sets the timeout for connecting to a node.
@@ -1252,6 +1932,21 @@ cass_cluster_set_request_timeout(CassCluster* cluster,
 CASS_EXPORT void
 cass_cluster_set_resolve_timeout(CassCluster* cluster,
                                  unsigned timeout_ms);
+
+/**
+ * Sets the maximum time to wait for schema agreement after a schema change
+ * is made (e.g. creating, altering, dropping a table/keyspace/view/index etc).
+ *
+ * <b>Default:</b> 10000 milliseconds
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] wait_time_ms Wait time in milliseconds
+ */
+CASS_EXPORT void
+cass_cluster_set_max_schema_wait_time(CassCluster* cluster,
+                                      unsigned wait_time_ms);
 
 /**
  * Sets credentials for plain text authentication.
@@ -1318,7 +2013,7 @@ cass_cluster_set_load_balance_round_robin(CassCluster* cluster);
  *
  * @param[in] cluster
  * @param[in] local_dc The primary data center to try first
- * @param[in] used_hosts_per_remote_dc The number of host used in each remote DC if no hosts
+ * @param[in] used_hosts_per_remote_dc The number of hosts used in each remote DC if no hosts
  * are available in the local dc
  * @param[in] allow_remote_dcs_for_local_cl Allows remote hosts to be used if no local dc hosts
  * are available and the consistency level is LOCAL_ONE or LOCAL_QUORUM
@@ -1375,6 +2070,25 @@ CASS_EXPORT void
 cass_cluster_set_token_aware_routing(CassCluster* cluster,
                                      cass_bool_t enabled);
 
+
+/**
+ * Configures token-aware routing to randomly shuffle replicas. This can reduce
+ * the effectiveness of server-side caching, but it can better distribute load over
+ * replicas for a given partition key.
+ *
+ * <b>Note:</b> Token-aware routing must be enabled for the setting to
+ * be applicable.
+ *
+ * <b>Default:</b> cass_true (enabled).
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] enabled
+ */
+CASS_EXPORT void
+cass_cluster_set_token_aware_routing_shuffle_replicas(CassCluster* cluster,
+                                                      cass_bool_t enabled);
 
 /**
  * Configures the cluster to use latency-aware request routing or not.
@@ -1454,7 +2168,7 @@ cass_cluster_set_whitelist_filtering(CassCluster* cluster,
                                      const char* hosts);
 
 /**
- * Same as cass_cluster_set_whitelist_filtering_hosts(), but with lengths for
+ * Same as cass_cluster_set_whitelist_filtering(), but with lengths for
  * string parameters.
  *
  * @public @memberof CassCluster
@@ -1462,9 +2176,9 @@ cass_cluster_set_whitelist_filtering(CassCluster* cluster,
  * @param[in] cluster
  * @param[in] hosts
  * @param[in] hosts_length
- * @return same as cass_cluster_set_whitelist_filtering_hosts()
+ * @return same as cass_cluster_set_whitelist_filtering()
  *
- * @see cass_cluster_set_whitelist_filtering_hosts()
+ * @see cass_cluster_set_whitelist_filtering()
  */
 CASS_EXPORT void
 cass_cluster_set_whitelist_filtering_n(CassCluster* cluster,
@@ -1504,9 +2218,9 @@ cass_cluster_set_blacklist_filtering(CassCluster* cluster,
  * @param[in] cluster
  * @param[in] hosts
  * @param[in] hosts_length
- * @return same as cass_cluster_set_blacklist_filtering_hosts()
+ * @return same as cass_cluster_set_blacklist_filtering()
  *
- * @see cass_cluster_set_blacklist_filtering_hosts()
+ * @see cass_cluster_set_blacklist_filtering()
  */
 CASS_EXPORT void
 cass_cluster_set_blacklist_filtering_n(CassCluster* cluster,
@@ -1582,9 +2296,9 @@ cass_cluster_set_blacklist_dc_filtering_n(CassCluster* cluster,
                                           size_t dcs_length);
 
 /**
- * Enable/Disable Nagel's algorithm on connections.
+ * Enable/Disable Nagle's algorithm on connections.
  *
- * <b>Default:</b> cass_true (disables Nagel's algorithm).
+ * <b>Default:</b> cass_true (disables Nagle's algorithm).
  *
  * @public @memberof CassCluster
  *
@@ -1714,8 +2428,6 @@ cass_cluster_set_use_schema(CassCluster* cluster,
  *
  * <b>Default:</b> cass_false (disabled).
  *
- * <b>Important:</b> Not implemented if using libuv 0.1x or earlier
- *
  * @public @memberof CassCluster
  *
  * @param[in] cluster
@@ -1773,6 +2485,128 @@ cass_cluster_set_constant_speculative_execution_policy(CassCluster* cluster,
  */
 CASS_EXPORT CassError
 cass_cluster_set_no_speculative_execution_policy(CassCluster* cluster);
+
+/**
+ * Sets the maximum number of "pending write" objects that will be
+ * saved for re-use for marshalling new requests. These objects may
+ * hold on to a significant amount of memory and reducing the
+ * number of these objects may reduce memory usage of the application.
+ *
+ * The cost of reducing the value of this setting is potentially slower
+ * marshalling of requests prior to sending.
+ *
+ * <b>Default:</b> Max unsigned integer value
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] num_objects
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_cluster_set_max_reusable_write_objects(CassCluster* cluster,
+                                            unsigned num_objects);
+
+/**
+ * Associates a named execution profile which can be utilized during execution.
+ *
+ * <b>Note:</b> Once the execution profile is added to a cluster, it is
+ * immutable and any changes made to the execution profile must be re-assigned
+ * to the cluster before a session connection is established in order for those
+ * settings to be utilized during query execution.
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] name
+ * @param[in] profile
+ * @return CASS_OK if successful, otherwise an error occurred
+ *
+ * @see cass_batch_set_execution_profile()
+ * @see cass_statement_set_execution_profile()
+ */
+CASS_EXPORT CassError
+cass_cluster_set_execution_profile(CassCluster* cluster,
+                                   const char* name,
+                                   CassExecProfile* profile);
+
+/**
+ * Same as cass_cluster_add_execution_profile(), but with lengths for string
+ * parameters.
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] name
+ * @param[in] name_length
+ * @param[in] profile
+ * @return same as cass_cluster_set_execution_profile()
+ *
+ * @see cass_batch_set_execution_profile()
+ * @see cass_statement_set_execution_profile()
+ */
+CASS_EXPORT CassError
+cass_cluster_set_execution_profile_n(CassCluster* cluster,
+                                     const char* name,
+                                     size_t name_length,
+                                     CassExecProfile* profile);
+
+/**
+ * Prepare statements on all available hosts.
+ *
+ * <b>Default:</b> cass_true
+ *
+ * @public @memberof CassCluster
+ *
+ * @param cluster
+ * @param enabled
+ * @return CASS_OK if successful, otherwise an error occurred
+ */
+CASS_EXPORT CassError
+cass_cluster_set_prepare_on_all_hosts(CassCluster* cluster,
+                                      cass_bool_t enabled);
+
+/**
+ * Enable pre-preparing cached prepared statements when existing hosts become
+ * available again or when new hosts are added to the cluster.
+ *
+ * This can help mitigate request latency when executing prepared statements
+ * by avoiding an extra round trip in cases where the statement is
+ * unprepared on a freshly started server. The main tradeoff is extra background
+ * network traffic is required to prepare the statements on hosts as they become
+ * available.
+ *
+ * <b>Default:</b> cass_true
+ *
+ * @param cluster
+ * @param enabled
+ * @return CASS_OK if successful, otherwise an error occurred
+ */
+CASS_EXPORT CassError
+cass_cluster_set_prepare_on_up_or_add_host(CassCluster* cluster,
+                                           cass_bool_t enabled);
+
+/**
+ * Enable the <b>NO_COMPACT</b> startup option.
+ *
+ * This can help facilitate uninterrupted cluster upgrades where tables using
+ * <b>COMPACT_STORAGE</b> will operate in "compatibility mode" for
+ * <b>BATCH</b>, <b>DELETE</b>, <b>SELECT</b>, and <b>UPDATE</b> CQL operations.
+ *
+ * <b>Default:</b> cass_false
+ *
+ * @cassandra{3.0.16+}
+ * @cassandra{3.11.2+}
+ * @cassandra{4.0+}
+ *
+ * @public @memberof CassCluster
+ *
+ * @param[in] cluster
+ * @param[in] enabled
+ */
+CASS_EXPORT CassError
+cass_cluster_set_no_compact(CassCluster* cluster,
+                            cass_bool_t enabled);
 
 /***********************************************************************************
  *
@@ -1908,6 +2742,25 @@ cass_session_prepare_n(CassSession* session,
                        size_t query_length);
 
 /**
+ * Create a prepared statement from an existing statement.
+ *
+ * <b>Note:</b> Bound statements will inherit the keyspace, consistency,
+ * serial consistency, request timeout and retry policy of the existing
+ * statement.
+ *
+ * @public @memberof CassSession
+ *
+ * @param[in] session
+ * @param[in] statement
+ * @return A future that must be freed.
+ *
+ * @see cass_future_get_prepared()
+ */
+CASS_EXPORT CassFuture*
+cass_session_prepare_from_existing(CassSession* session,
+                                   CassStatement* statement);
+
+/**
  * Execute a query or bound statement.
  *
  * @public @memberof CassSession
@@ -1950,7 +2803,7 @@ cass_session_execute_batch(CassSession* session,
  * @param[in] session
  * @return A schema instance that must be freed.
  *
- * @see cass_schema_free()
+ * @see cass_schema_meta_free()
  */
 CASS_EXPORT const CassSchemaMeta*
 cass_session_get_schema_meta(const CassSession* session);
@@ -1962,12 +2815,22 @@ cass_session_get_schema_meta(const CassSession* session);
  *
  * @param[in] session
  * @param[out] output
- *
- * @see cass_schema_free()
  */
 CASS_EXPORT void
 cass_session_get_metrics(const CassSession* session,
                          CassMetrics* output);
+
+/**
+ * Gets a copy of this session's speculative execution metrics.
+ *
+ * @public @memberof CassSession
+ *
+ * @param[in] session
+ * @param[out] output
+ */
+CASS_EXPORT void
+cass_session_get_speculative_execution_metrics(const CassSession* session,
+                                               CassSpeculativeExecutionMetrics* output);
 
 /***********************************************************************************
  *
@@ -2054,6 +2917,18 @@ CASS_EXPORT void
 cass_keyspace_meta_name(const CassKeyspaceMeta* keyspace_meta,
                         const char** name,
                         size_t* name_length);
+
+
+/**
+ * Determine if the keyspace is a virtual keyspace.
+ *
+ * @public @memberof CassKeyspaceMeta
+ *
+ * @param[in] keyspace_meta
+ * @return cass_true is the keyspace is virtual, otherwise cass_false
+ */
+CASS_EXPORT cass_bool_t
+cass_keyspace_meta_is_virtual(const CassKeyspaceMeta* keyspace_meta);
 
 /**
  * Gets the table metadata for the provided table name.
@@ -2290,6 +3165,17 @@ CASS_EXPORT void
 cass_table_meta_name(const CassTableMeta* table_meta,
                      const char** name,
                      size_t* name_length);
+
+/**
+ * Determine if the table is a virtual table.
+ *
+ * @public @memberof CassTableMeta
+ *
+ * @param[in] table_meta
+ * @return cass_true is the table is virtual, otherwise cass_false
+ */
+CASS_EXPORT cass_bool_t
+cass_table_meta_is_virtual(const CassTableMeta* table_meta);
 
 /**
  * Gets the column metadata for the provided column name.
@@ -3583,7 +4469,7 @@ cass_authenticator_set_error(CassAuthenticator* auth,
                              const char* message);
 
 /**
- * Same as cass_authenticator_set_error_n(), but with lengths for string
+ * Same as cass_authenticator_set_error(), but with lengths for string
  * parameters.
  *
  * @public @memberof CassAuthenticator
@@ -3865,12 +4751,13 @@ CASS_EXPORT CassError
 cass_statement_add_key_index(CassStatement* statement,
                              size_t index);
 
-
 /**
- * Sets the statement's keyspace for use with token-aware routing.
+ * Sets the statement's keyspace. This is used for token-aware routing and when
+ * using protocol v5 or greater it also overrides the session's current
+ * keyspace for the statement.
  *
- * This is not necessary for prepared statements, as the keyspace
- * is determined in the metadata processed in the prepare phase.
+ * This is not necessary and will not work for bound statements, as the keyspace
+ * is determined by the prepared statement metadata.
  *
  * @public @memberof CassStatement
  *
@@ -4033,6 +4920,7 @@ cass_statement_set_request_timeout(CassStatement* statement,
  * @return CASS_OK if successful, otherwise an error occurred.
  *
  * @see cass_cluster_set_constant_speculative_execution_policy()
+ * @see cass_execution_profile_set_constant_speculative_execution_policy()
  */
 CASS_EXPORT CassError
 cass_statement_set_is_idempotent(CassStatement* statement,
@@ -4973,7 +5861,7 @@ cass_statement_bind_duration(CassStatement* statement,
                              size_t index,
                              cass_int32_t months,
                              cass_int32_t days,
-                             cass_int32_t nanos);
+                             cass_int64_t nanos);
 
 /**
  * Binds a "duration" to all the values with the specified name.
@@ -4994,7 +5882,7 @@ cass_statement_bind_duration_by_name(CassStatement* statement,
                                      const char* name,
                                      cass_int32_t months,
                                      cass_int32_t days,
-                                     cass_int32_t nanos);
+                                     cass_int64_t nanos);
 
 /**
  * Same as cass_statement_bind_duration_by_name(), but with lengths for string
@@ -5020,7 +5908,7 @@ cass_statement_bind_duration_by_name_n(CassStatement* statement,
                                        size_t name_length,
                                        cass_int32_t months,
                                        cass_int32_t days,
-                                       cass_int32_t nanos);
+                                       cass_int64_t nanos);
 
 /**
  * Bind a "list", "map" or "set" to a query or bound statement at the
@@ -5190,6 +6078,41 @@ cass_statement_bind_user_type_by_name_n(CassStatement* statement,
                                         size_t name_length,
                                         const CassUserType* user_type);
 
+/**
+ * Sets the execution profile to execute the statement with.
+ *
+ * <b>Note:</b> NULL or empty string will clear execution profile from statement
+ *
+ * @public @memberof CassStatement
+ *
+ * @param[in] statement
+ * @param[in] name
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_execution_profile()
+ */
+CASS_EXPORT CassError
+cass_statement_set_execution_profile(CassStatement* statement,
+                                     const char* name);
+
+/**
+ * Same as cass_statement_set_execution_profile(), but with lengths for string
+ * parameters.
+ *
+ * @public @memberof CassStatement
+ *
+ * @param[in] statement
+ * @param[in] name
+ * @param[in] name_length
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_statement_set_execution_profile()
+ */
+CASS_EXPORT CassError
+cass_statement_set_execution_profile_n(CassStatement* statement,
+                                       const char* name,
+                                       size_t name_length);
+
 /***********************************************************************************
  *
  * Prepared
@@ -5318,6 +6241,41 @@ CASS_EXPORT void
 cass_batch_free(CassBatch* batch);
 
 /**
+ * Sets the batch's keyspace. When using protocol v5 or greater it overrides
+ * the session's keyspace for the batch.
+ *
+ * <b>Note:</b> If not set explicitly then the batch will inherit the keyspace
+ * of the first child statement with a non-empty keyspace.
+ *
+ * @public @memberof CassBatch
+ *
+ * @param[in] batch
+ * @param[in] keyspace
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_batch_set_keyspace(CassBatch* batch,
+                        const char* keyspace);
+
+/**
+ * Same as cass_batch_set_keyspace(), but with lengths for string
+ * parameters.
+ *
+ * @public @memberof CassBatch
+ *
+ * @param[in] batch
+ * @param[in] keyspace
+ * @param[in] keyspace_length
+ * @return same as cass_batch_set_keyspace()
+ *
+ * @see cass_batch_set_keyspace()
+ */
+CASS_EXPORT CassError
+cass_batch_set_keyspace_n(CassBatch* batch,
+                          const char* keyspace,
+                          size_t keyspace_length);
+
+/**
  * Sets the batch's consistency level
  *
  * @cassandra{2.0+}
@@ -5394,6 +6352,7 @@ cass_batch_set_request_timeout(CassBatch* batch,
  * @return CASS_OK if successful, otherwise an error occurred.
  *
  * @see cass_cluster_set_constant_speculative_execution_policy()
+ * @see cass_execution_profile_set_constant_speculative_execution_policy()
  */
 CASS_EXPORT CassError
 cass_batch_set_is_idempotent(CassBatch* batch,
@@ -5443,6 +6402,41 @@ cass_batch_set_custom_payload(CassBatch* batch,
 CASS_EXPORT CassError
 cass_batch_add_statement(CassBatch* batch,
                          CassStatement* statement);
+
+/**
+ * Sets the execution profile to execute the batch with.
+ *
+ * <b>Note:</b> NULL or empty string will clear execution profile from batch
+ *
+ * @public @memberof CassBatch
+ *
+ * @param[in] batch
+ * @param[in] name
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_cluster_set_execution_profile()
+ */
+CASS_EXPORT CassError
+cass_batch_set_execution_profile(CassBatch* batch,
+                                 const char* name);
+
+/**
+ * Same as cass_batch_set_execution_profile(), but with lengths for string
+ * parameters.
+ *
+ * @public @memberof CassBatch
+ *
+ * @param[in] batch
+ * @param[in] name
+ * @param[in] name_length
+ * @return CASS_OK if successful, otherwise an error occurred.
+ *
+ * @see cass_batch_set_execution_profile()
+ */
+CASS_EXPORT CassError
+cass_batch_set_execution_profile_n(CassBatch* batch,
+                                   const char* name,
+                                   size_t name_length);
 
 /***********************************************************************************
  *
@@ -6193,7 +7187,7 @@ CASS_EXPORT CassError
 cass_collection_append_duration(CassCollection* collection,
                                 cass_int32_t months,
                                 cass_int32_t days,
-                                cass_int32_t nanos);
+                                cass_int64_t nanos);
 
 /**
  * Appends a "list", "map" or "set" to the collection.
@@ -6630,7 +7624,7 @@ cass_tuple_set_duration(CassTuple* tuple,
                         size_t index,
                         cass_int32_t months,
                         cass_int32_t days,
-                        cass_int32_t nanos);
+                        cass_int64_t nanos);
 
 /**
  * Sets a "list", "map" or "set" in a tuple at the specified index.
@@ -7663,7 +8657,7 @@ cass_user_type_set_duration(CassUserType* user_type,
                             size_t index,
                             cass_int32_t months,
                             cass_int32_t days,
-                            cass_int32_t nanos);
+                            cass_int64_t nanos);
 
 /**
  * Sets "duration" in a user defined type at the specified name.
@@ -7684,7 +8678,7 @@ cass_user_type_set_duration_by_name(CassUserType* user_type,
                                     const char* name,
                                     cass_int32_t months,
                                     cass_int32_t days,
-                                    cass_int32_t nanos);
+                                    cass_int64_t nanos);
 
 /**
  * Same as cass_user_type_set_duration_by_name(), but with lengths for string
@@ -7710,7 +8704,7 @@ cass_user_type_set_duration_by_name_n(CassUserType* user_type,
                                       size_t name_length,
                                       cass_int32_t months,
                                       cass_int32_t days,
-                                      cass_int32_t nanos);
+                                      cass_int64_t nanos);
 
 /**
  * Sets a "list", "map" or "set" in a user defined type at the
@@ -9202,7 +10196,7 @@ CASS_EXPORT CassError
 cass_value_get_duration(const CassValue* value,
                         cass_int32_t* months,
                         cass_int32_t* days,
-                        cass_int32_t* nanos);
+                        cass_int64_t* nanos);
 
 /**
  * Gets the type of the specified value.
@@ -9821,7 +10815,7 @@ cass_error_desc(CassError error);
  * to call any cass_*() functions after this call.
  *
  * @deprecated This is no longer useful and does nothing. Expect this to be
- * removed in a few releases.
+ * removed in a future release.
  */
 CASS_EXPORT void
 CASS_DEPRECATED(cass_log_cleanup());
@@ -9864,7 +10858,7 @@ cass_log_set_callback(CassLogCallback callback,
  * <b>Default:</b> 2048
  *
  * @deprecated This is no longer useful and does nothing. Expect this to be
- * removed in a few releases.
+ * removed in a future release.
  *
  * @param[in] queue_size
  */
@@ -9997,6 +10991,32 @@ cass_time_from_epoch(cass_int64_t epoch_secs);
 CASS_EXPORT cass_int64_t
 cass_date_time_to_epoch(cass_uint32_t date,
                         cass_int64_t time);
+
+/***********************************************************************************
+ *
+ * Allocator
+ *
+ ************************************************************************************/
+
+/**
+ * Set custom allocation functions.
+ *
+ * <b>Note:</b> This is not thread-safe. The allocation functions must be set
+ * before any other library function is called.
+ *
+ * <b>Default:</b> The C runtime's malloc(), realloc() and free()
+ *
+ * <b>Important:</b> The C runtime's malloc(), realloc() and free() will be
+ * used by libuv when using versions 1.5 or earlier.
+ *
+ * @param[in] malloc_func
+ * @param[in] realloc_func
+ * @param[in] free_func
+ */
+CASS_EXPORT void
+cass_alloc_set_functions(CassMallocFunction malloc_func,
+                         CassReallocFunction realloc_func,
+                         CassFreeFunction free_func);
 
 #ifdef __cplusplus
 } /* extern "C" */

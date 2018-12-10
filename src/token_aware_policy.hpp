@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -26,19 +26,23 @@ namespace cass {
 
 class TokenAwarePolicy : public ChainedLoadBalancingPolicy {
 public:
-  TokenAwarePolicy(LoadBalancingPolicy* child_policy)
+  TokenAwarePolicy(LoadBalancingPolicy* child_policy, bool shuffle_replicas)
       : ChainedLoadBalancingPolicy(child_policy)
-      , index_(0) {}
+      , random_(NULL)
+      , index_(0)
+      , shuffle_replicas_(shuffle_replicas) {}
 
   virtual ~TokenAwarePolicy() {}
 
   virtual void init(const Host::Ptr& connected_host, const HostMap& hosts, Random* random);
 
-  virtual QueryPlan* new_query_plan(const std::string& connected_keyspace,
+  virtual QueryPlan* new_query_plan(const String& keyspace,
                                     RequestHandler* request_handler,
                                     const TokenMap* token_map);
 
-  LoadBalancingPolicy* new_instance() { return new TokenAwarePolicy(child_policy_->new_instance()); }
+  LoadBalancingPolicy* new_instance() {
+    return Memory::allocate<TokenAwarePolicy>(child_policy_->new_instance(), shuffle_replicas_);
+  }
 
 private:
   class TokenAwareQueryPlan : public QueryPlan {
@@ -60,7 +64,9 @@ private:
     size_t remaining_;
   };
 
+  Random* random_;
   size_t index_;
+  bool shuffle_replicas_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(TokenAwarePolicy);

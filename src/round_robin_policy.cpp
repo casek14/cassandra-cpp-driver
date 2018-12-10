@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -35,10 +35,10 @@ CassHostDistance RoundRobinPolicy::distance(const Host::Ptr& host) const {
   return CASS_HOST_DISTANCE_LOCAL;
 }
 
-QueryPlan* RoundRobinPolicy::new_query_plan(const std::string& connected_keyspace,
+QueryPlan* RoundRobinPolicy::new_query_plan(const String& keyspace,
                                             RequestHandler* request_handler,
                                             const TokenMap* token_map) {
-  return new RoundRobinQueryPlan(hosts_, index_++);
+  return Memory::allocate<RoundRobinQueryPlan>(hosts_, index_++);
 }
 
 void RoundRobinPolicy::on_add(const Host::Ptr& host) {

@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -21,13 +21,14 @@
 #include "constants.hpp"
 #include "external.hpp"
 #include "macros.hpp"
+#include "prepared.hpp"
 #include "request.hpp"
 #include "result_metadata.hpp"
 #include "result_response.hpp"
 #include "retry_policy.hpp"
-
-#include <vector>
-#include <string>
+#include "scoped_ptr.hpp"
+#include "string.hpp"
+#include "vector.hpp"
 
 namespace cass {
 
@@ -37,38 +38,17 @@ class Statement : public RoutableRequest, public AbstractData {
 public:
   typedef SharedRefPtr<Statement> Ptr;
 
-  Statement(uint8_t opcode, uint8_t kind, size_t values_count = 0)
-      : RoutableRequest(opcode)
-      , AbstractData(values_count)
-      , flags_(0)
-      , page_size_(-1)
-      , kind_(kind) { }
+  Statement(const char* query, size_t query_length,
+            size_t values_count);
 
-  Statement(uint8_t opcode, uint8_t kind, size_t values_count,
-            const std::vector<size_t>& key_indices,
-            const std::string& keyspace)
-      : RoutableRequest(opcode, keyspace)
-      , AbstractData(values_count)
-      , flags_(0)
-      , page_size_(-1)
-      , kind_(kind)
-      , key_indices_(key_indices) { }
+  Statement(const Prepared* prepared);
 
   virtual ~Statement() { }
 
-  uint8_t flags() const { return flags_; }
-
-  bool skip_metadata() const {
-    return flags_ & CASS_QUERY_FLAG_SKIP_METADATA;
-  }
-
-  void set_skip_metadata(bool skip_metadata) {
-    if (skip_metadata) {
-      flags_ |= CASS_QUERY_FLAG_SKIP_METADATA;
-    } else {
-      flags_ &= ~CASS_QUERY_FLAG_SKIP_METADATA;
-    }
-  }
+  // Used to get the original query string from a simple statement. To get the
+  // query from a execute request (bound statement) cast it and get it from the
+  // prepared object.
+  String query() const;
 
   void set_has_names_for_values(bool has_names_for_values) {
     if (has_names_for_values) {
@@ -82,33 +62,46 @@ public:
     return flags_ & CASS_QUERY_FLAG_NAMES_FOR_VALUES;
   }
 
-  int32_t page_size() const {  return page_size_;  }
+  int32_t page_size() const { return page_size_; }
 
   void set_page_size(int32_t page_size) { page_size_ = page_size; }
 
-  const std::string& paging_state() const { return paging_state_; }
+  const String& paging_state() const { return paging_state_; }
 
-  void set_paging_state(const std::string& paging_state) {
+  void set_paging_state(const String& paging_state) {
     paging_state_ = paging_state;
   }
 
-  uint8_t kind() const { return kind_; }
+  uint8_t kind() const {
+    return opcode() == CQL_OPCODE_QUERY ? CASS_BATCH_KIND_QUERY
+                                        : CASS_BATCH_KIND_PREPARED;
+  }
 
   void add_key_index(size_t index) { key_indices_.push_back(index); }
 
-  virtual bool get_routing_key(std::string* routing_key, EncodingCache* cache) const;
+  virtual bool get_routing_key(String* routing_key) const {
+    return calculate_routing_key(key_indices_, routing_key);
+  }
 
-  virtual int32_t encode_batch(int version, BufferVec* bufs, RequestCallback* callback) const = 0;
+  int32_t encode_batch(int version, RequestCallback* callback, BufferVec* bufs) const;
 
 protected:
-  int32_t copy_buffers(int version, BufferVec* bufs, RequestCallback* callback) const;
+  bool with_keyspace(int version) const;
+
+  int32_t encode_query_or_id(BufferVec* bufs) const;
+  int32_t encode_begin(int version, uint16_t element_count,
+                       RequestCallback* callback, BufferVec* bufs) const;
+  int32_t encode_values(int version, RequestCallback* callback, BufferVec* bufs) const;
+  int32_t encode_end(int version, RequestCallback* callback, BufferVec* bufs) const;
+
+  bool calculate_routing_key(const Vector<size_t>& key_indices, String* routing_key) const;
 
 private:
-  uint8_t flags_;
+  Buffer query_or_id_;
+  int32_t flags_;
   int32_t page_size_;
-  std::string paging_state_;
-  uint8_t kind_;
-  std::vector<size_t> key_indices_;
+  String paging_state_;
+  Vector<size_t> key_indices_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Statement);

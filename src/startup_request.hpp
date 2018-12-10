@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -19,33 +19,33 @@
 
 #include "request.hpp"
 #include "constants.hpp"
+#include "map.hpp"
 #include "scoped_ptr.hpp"
-
-#include <map>
-#include <string>
+#include "string.hpp"
 
 namespace cass {
 
 class StartupRequest : public Request {
 public:
-  StartupRequest()
+  StartupRequest(bool no_compact_enabled)
       : Request(CQL_OPCODE_STARTUP)
       , version_("3.0.0")
-      , compression_("") {}
+      , compression_("")
+      , no_compact_enabled_(no_compact_enabled) { }
 
-  bool encode(size_t reserved, char** output, size_t& size);
-
-  const std::string version() const { return version_; }
-  const std::string compression() const { return compression_; }
+  const String version() const { return version_; }
+  const String compression() const { return compression_; }
+  bool no_compact_enabled() const { return no_compact_enabled_; }
 
 private:
   int encode(int version, RequestCallback* callback, BufferVec* bufs) const;
 
 private:
-  typedef std::map<std::string, std::string> OptionsMap;
+  typedef Map<String, String> OptionsMap;
 
-  std::string version_;
-  std::string compression_;
+  String version_;
+  String compression_;
+  bool no_compact_enabled_;
 };
 
 } // namespace cass

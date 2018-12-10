@@ -28,22 +28,23 @@ succeed. In all other cases, this policy will return an error.
 
 <table class="table table-striped table-hover table-condensed">
   <thead>
-   <tr>
+  <tr>
    <th>Failure Type</th>
    <th>Action</th>
-   </tr>
+  </tr>
   </thead>
+
   <tbody>
   <tr>
    <td>Read Timeout</td>
    <td>Retry if the number of received responses is greater than or equal to the
-   number of required responses, but the data was not received. Returns and
-   error in all other cases.</td>
+       number of required responses, but the data was not received. Returns and
+       error in all other cases.</td>
   </tr>
   <tr>
    <td>Write Timeout</td>
    <td>Retry only if the request is a logged batch request and the request failed to
-   write the batch log. Returns an error in all other cases.</td>
+       write the batch log. Returns an error in all other cases.</td>
   </tr>
   <tr>
    <td>Unavailable</td>
@@ -75,11 +76,12 @@ used in application that required strong consistency.
 
 <table class="table table-striped table-hover table-condensed">
   <thead>
-   <tr>
+  <tr>
    <th>Failure Type</th>
    <th>Action</th>
-   </tr>
+  </tr>
   </thead>
+
   <tbody>
   <tr>
    <td>Read Timeout</td>
@@ -88,8 +90,8 @@ used in application that required strong consistency.
   <tr>
    <td>Write Timeout</td>
    <td>Retry unlogged batches at a lower consistency level if at least one
-   replica responded. For single queries and other batch types if any replicas
-   responded then consider the request successful and ignore the error.</td>
+       replica responded. For single queries and other batch types if any replicas
+       responded then consider the request successful and ignore the error.</td>
   </tr>
   <tr>
    <td>Unavailable</td>
@@ -121,6 +123,7 @@ directly.
    <th>Action</th>
    </tr>
   </thead>
+
   <tbody>
   <tr>
    <td>Read Timeout</td>
@@ -154,8 +157,10 @@ the retry decision of its child policy. The log messages created by this policy
 are done using the [`CASS_LOG_INFO`] level.
 
 ```c
+CassCluster* cluster = cass_cluster_new();
+
 CassRetryPolicy* default_policy = cass_retry_policy_default_new();
-CassRetryPolicy* logging_policy = cass_retry_policy_logging_new(default_policy)
+CassRetryPolicy* logging_policy = cass_retry_policy_logging_new(default_policy);
 
 cass_cluster_set_retry_policy(cluster, logging_policy);
 
@@ -164,6 +169,8 @@ cass_cluster_set_retry_policy(cluster, logging_policy);
 /* Retry policies must be freed */
 cass_retry_policy_free(default_policy);
 cass_retry_policy_free(logging_policy);
+
+cass_cluster_free(cluster);
 ```
 [`cass_cluster_set_retry_policy()`]: http://datastax.github.io/cpp-driver/api/struct.CassCluster/#cass-cluster-set-retry-policy
 [`cass_statement_set_retry_policy()`]: http://datastax.github.io/cpp-driver/api/struct.CassStatement/#cass-statement-set-retry-policy

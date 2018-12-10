@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -17,53 +17,38 @@
 #ifndef __CASS_EXECUTE_REQUEST_HPP_INCLUDED__
 #define __CASS_EXECUTE_REQUEST_HPP_INCLUDED__
 
-#include <string>
-#include <vector>
-
 #include "statement.hpp"
 #include "constants.hpp"
 #include "prepared.hpp"
 #include "ref_counted.hpp"
+#include "string.hpp"
+#include "vector.hpp"
 
 namespace cass {
 
 class ExecuteRequest : public Statement {
 public:
-  ExecuteRequest(const Prepared* prepared)
-      : Statement(CQL_OPCODE_EXECUTE, CASS_BATCH_KIND_PREPARED,
-                  prepared->result()->column_count(),
-                  prepared->key_indices(),
-                  prepared->result()->keyspace().to_string())
-      , prepared_(prepared)
-      , metadata_(prepared->result()->metadata()){
-      // If the prepared statement has result metadata then there is no
-      // need to get the metadata with this request too.
-      if (prepared->result()->result_metadata()) {
-        set_skip_metadata(true);
-      }
-  }
+  ExecuteRequest(const Prepared* prepared);
 
   const Prepared::ConstPtr& prepared() const { return prepared_; }
 
+  virtual int encode(int version, RequestCallback* callback, BufferVec* bufs) const;
+
+  bool get_routing_key(String* routing_key)  const {
+    return calculate_routing_key(prepared_->key_indices(), routing_key);
+  }
+
 private:
   virtual size_t get_indices(StringRef name, IndexVec* indices) {
-    return metadata_->get_indices(name, indices);
+    return prepared_->result()->metadata()->get_indices(name, indices);
   }
 
   virtual const DataType::ConstPtr& get_type(size_t index) const {
-    return metadata_->get_column_definition(index).data_type;
+    return prepared_->result()->metadata()->get_column_definition(index).data_type;
   }
-
-  virtual int32_t encode_batch(int version, BufferVec* bufs, RequestCallback* callback) const;
-
-private:
-  int encode(int version, RequestCallback* callback, BufferVec* bufs) const;
-  int internal_encode_v1(RequestCallback* callback, BufferVec* bufs) const;
-  int internal_encode(int version, RequestCallback* callback, BufferVec* bufs) const;
 
 private:
   Prepared::ConstPtr prepared_;
-  ResultMetadata::Ptr metadata_;
 };
 
 } // namespace cass

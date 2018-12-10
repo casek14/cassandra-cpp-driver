@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -20,11 +20,10 @@
 #include "cassandra.h"
 #include "constants.hpp"
 #include "host.hpp"
+#include "memory.hpp"
 #include "request.hpp"
-
-#include <list>
-#include <set>
-#include <string>
+#include "string.hpp"
+#include "vector.hpp"
 
 #include <uv.h>
 
@@ -74,9 +73,12 @@ public:
   }
 };
 
-class LoadBalancingPolicy : public Host::StateListener, public RefCounted<LoadBalancingPolicy> {
+class LoadBalancingPolicy
+    : public HostListener
+    , public RefCounted<LoadBalancingPolicy> {
 public:
   typedef SharedRefPtr<LoadBalancingPolicy> Ptr;
+  typedef Vector<Ptr> Vec;
 
   LoadBalancingPolicy()
     : RefCounted<LoadBalancingPolicy>() {}
@@ -90,13 +92,23 @@ public:
 
   virtual CassHostDistance distance(const Host::Ptr& host) const = 0;
 
-  virtual QueryPlan* new_query_plan(const std::string& connected_keyspace,
+  virtual QueryPlan* new_query_plan(const String& keyspace,
                                     RequestHandler* request_handler,
                                     const TokenMap* token_map) = 0;
 
   virtual LoadBalancingPolicy* new_instance() = 0;
 };
 
+inline bool is_host_ignored(const LoadBalancingPolicy::Vec& policies,
+  const Host::Ptr& host) {
+  for (LoadBalancingPolicy::Vec::const_iterator it = policies.begin(),
+    end = policies.end(); it != end; ++it) {
+    if ((*it)->distance(host) != CASS_HOST_DISTANCE_IGNORE) {
+      return false;
+    }
+  }
+  return true;
+}
 
 class ChainedLoadBalancingPolicy : public LoadBalancingPolicy {
 public:

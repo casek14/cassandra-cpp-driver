@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ cass_bool_t cass_future_wait_timed(CassFuture* future, cass_duration_t wait_us) 
 }
 
 const CassResult* cass_future_get_result(CassFuture* future) {
-  if (future->type() != cass::CASS_FUTURE_TYPE_RESPONSE) {
+  if (future->type() != cass::Future::FUTURE_TYPE_RESPONSE) {
     return NULL;
   }
 
@@ -68,7 +68,7 @@ const CassResult* cass_future_get_result(CassFuture* future) {
 }
 
 const CassPrepared* cass_future_get_prepared(CassFuture* future) {
-  if (future->type() != cass::CASS_FUTURE_TYPE_RESPONSE) {
+  if (future->type() != cass::Future::FUTURE_TYPE_RESPONSE) {
     return NULL;
   }
   cass::ResponseFuture* response_future =
@@ -79,15 +79,15 @@ const CassPrepared* cass_future_get_prepared(CassFuture* future) {
     return NULL;
   }
 
-  cass::Prepared* prepared = new cass::Prepared(result,
-                                                response_future->statement,
-                                                *response_future->schema_metadata);
+  cass::Prepared* prepared = cass::Memory::allocate<cass::Prepared>(result,
+                                                                    response_future->prepare_request,
+                                                                    *response_future->schema_metadata);
   prepared->inc_ref();
   return CassPrepared::to(prepared);
 }
 
 const CassErrorResult* cass_future_get_error_result(CassFuture* future) {
-  if (future->type() != cass::CASS_FUTURE_TYPE_RESPONSE) {
+  if (future->type() != cass::Future::FUTURE_TYPE_RESPONSE) {
     return NULL;
   }
 
@@ -116,7 +116,7 @@ void cass_future_error_message(CassFuture* future,
                                size_t* message_length) {
   const cass::Future::Error* error = future->error();
   if (error != NULL) {
-    const std::string& m = error->message;
+    const cass::String& m = error->message;
     *message = m.data();
     *message_length = m.length();
   } else {
@@ -126,7 +126,7 @@ void cass_future_error_message(CassFuture* future,
 }
 
 size_t cass_future_custom_payload_item_count(CassFuture* future) {
-  if (future->type() != cass::CASS_FUTURE_TYPE_RESPONSE) {
+  if (future->type() != cass::Future::FUTURE_TYPE_RESPONSE) {
     return 0;
   }
   cass::Response::Ptr response(
@@ -141,20 +141,20 @@ CassError cass_future_custom_payload_item(CassFuture* future,
                                           size_t* name_length,
                                           const cass_byte_t** value,
                                           size_t* value_size) {
-  if (future->type() != cass::CASS_FUTURE_TYPE_RESPONSE) {
+  if (future->type() != cass::Future::FUTURE_TYPE_RESPONSE) {
     return CASS_ERROR_LIB_INVALID_FUTURE_TYPE;
   }
   cass::Response::Ptr response(
         static_cast<cass::ResponseFuture*>(future->from())->response());
   if (!response) return CASS_ERROR_LIB_NO_CUSTOM_PAYLOAD;
 
-  const cass::Response::CustomPayloadVec& custom_payload =
+  const cass::CustomPayloadVec& custom_payload =
       response->custom_payload();
   if (index >= custom_payload.size()) {
     return CASS_ERROR_LIB_INDEX_OUT_OF_BOUNDS;
   }
 
-  const cass::Response::CustomPayloadItem& item = custom_payload[index];
+  const cass::CustomPayloadItem& item = custom_payload[index];
   *name = item.name.data();
   *name_length = item.name.size();
   *value = reinterpret_cast<const cass_byte_t*>(item.value.data());
@@ -183,13 +183,16 @@ bool Future::set_callback(Future::Callback callback, void* data) {
 
 void Future::internal_set(ScopedMutex& lock) {
   is_set_ = true;
-  uv_cond_broadcast(&cond_);
   if (callback_) {
     Callback callback = callback_;
     void* data = data_;
     lock.unlock();
     callback(CassFuture::to(this), data);
+    lock.lock();
   }
+  // Broadcast after we've run the callback so that threads waiting
+  // on this future see the side effects of the callback.
+  uv_cond_broadcast(&cond_);
 }
 
 } // namespace cass

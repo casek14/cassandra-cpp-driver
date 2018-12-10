@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "external.hpp"
 #include "macros.hpp"
 #include "prepared.hpp"
+#include "protocol.hpp"
 #include "query_request.hpp"
 #include "request_callback.hpp"
 #include "scoped_ptr.hpp"
@@ -34,14 +35,14 @@ extern "C" {
 
 CassStatement* cass_statement_new(const char* query,
                                   size_t parameter_count) {
-  return cass_statement_new_n(query, strlen(query), parameter_count);
+  return cass_statement_new_n(query, SAFE_STRLEN(query), parameter_count);
 }
 
 CassStatement* cass_statement_new_n(const char* query,
                                     size_t query_length,
                                     size_t parameter_count) {
   cass::QueryRequest* query_request
-      = new cass::QueryRequest(query, query_length, parameter_count);
+      = cass::Memory::allocate<cass::QueryRequest>(query, query_length, parameter_count);
   query_request->inc_ref();
   return CassStatement::to(query_request);
 }
@@ -53,20 +54,23 @@ CassError cass_statement_reset_parameters(CassStatement* statement, size_t count
 
 CassError cass_statement_add_key_index(CassStatement* statement, size_t index) {
   if (statement->kind() != CASS_BATCH_KIND_QUERY) return CASS_ERROR_LIB_BAD_PARAMS;
-  if (index >= statement->elements_count()) return CASS_ERROR_LIB_BAD_PARAMS;
+  if (index >= statement->elements().size()) return CASS_ERROR_LIB_BAD_PARAMS;
   statement->add_key_index(index);
   return CASS_OK;
 }
 
 CassError cass_statement_set_keyspace(CassStatement* statement, const char* keyspace) {
-  return cass_statement_set_keyspace_n(statement, keyspace, strlen(keyspace));
+  return cass_statement_set_keyspace_n(statement, keyspace, SAFE_STRLEN(keyspace));
 }
 
 CassError cass_statement_set_keyspace_n(CassStatement* statement,
                                         const char* keyspace,
                                         size_t keyspace_length) {
-  if (statement->kind() != CASS_BATCH_KIND_QUERY) return CASS_ERROR_LIB_BAD_PARAMS;
-  statement->set_keyspace(std::string(keyspace, keyspace_length));
+  // The keyspace is set by the prepared metadata
+  if (statement->opcode() == CQL_OPCODE_EXECUTE) {
+    return CASS_ERROR_LIB_BAD_PARAMS;
+  }
+  statement->set_keyspace(cass::String(keyspace, keyspace_length));
   return CASS_OK;
 }
 
@@ -101,7 +105,7 @@ CassError cass_statement_set_paging_state(CassStatement* statement,
 CassError cass_statement_set_paging_state_token(CassStatement* statement,
                                               const char* paging_state,
                                               size_t paging_state_size) {
-  statement->set_paging_state(std::string(paging_state, paging_state_size));
+  statement->set_paging_state(cass::String(paging_state, paging_state_size));
   return CASS_OK;
 }
 
@@ -171,7 +175,7 @@ CASS_STATEMENT_BIND(decimal,
                     THREE_PARAMS_(const cass_byte_t* varint, size_t varint_size, int scale),
                     cass::CassDecimal(varint, varint_size, scale))
 CASS_STATEMENT_BIND(duration,
-                    THREE_PARAMS_(cass_int32_t months, cass_int32_t days, cass_int32_t nanos),
+                    THREE_PARAMS_(cass_int32_t months, cass_int32_t days, cass_int64_t nanos),
                     cass::CassDuration(months, days, nanos))
 
 #undef CASS_STATEMENT_BIND
@@ -179,7 +183,7 @@ CASS_STATEMENT_BIND(duration,
 CassError cass_statement_bind_string(CassStatement* statement, size_t index,
                                      const char* value) {
   return cass_statement_bind_string_n(statement, index,
-                                      value, strlen(value));
+                                      value, SAFE_STRLEN(value));
 }
 
 CassError cass_statement_bind_string_n(CassStatement* statement, size_t index,
@@ -191,7 +195,7 @@ CassError cass_statement_bind_string_by_name(CassStatement* statement,
                                              const char* name,
                                              const char* value) {
   return statement->set(cass::StringRef(name),
-                        cass::CassString(value, strlen(value)));
+                        cass::CassString(value, SAFE_STRLEN(value)));
 }
 
 CassError cass_statement_bind_string_by_name_n(CassStatement* statement,
@@ -200,7 +204,7 @@ CassError cass_statement_bind_string_by_name_n(CassStatement* statement,
                                                const char* value,
                                                size_t value_length) {
   return statement->set(cass::StringRef(name, name_length),
-                        cass::CassString(value, strlen(value)));
+                        cass::CassString(value, SAFE_STRLEN(value)));
 }
 
 CassError cass_statement_bind_custom(CassStatement* statement,
@@ -246,64 +250,310 @@ CassError cass_statement_bind_custom_by_name_n(CassStatement* statement,
                                          value, value_size));
 }
 
+CassError cass_statement_set_execution_profile(CassStatement* statement,
+                                               const char* name) {
+  return cass_statement_set_execution_profile_n(statement,
+                                                name,
+                                                SAFE_STRLEN(name));
+}
+
+CassError cass_statement_set_execution_profile_n(CassStatement* statement,
+                                                 const char* name,
+                                                 size_t name_length) {
+  if (name_length > 0) {
+    statement->set_execution_profile_name(cass::String(name, name_length));
+  } else {
+    statement->set_execution_profile_name(cass::String());
+  }
+  return CASS_OK;
+}
+
 } // extern "C"
 
 namespace cass {
 
-int32_t Statement::copy_buffers(int version, BufferVec* bufs, RequestCallback* callback) const {
-  int32_t size = 0;
+Statement::Statement(const char* query, size_t query_length, size_t values_count)
+  : RoutableRequest(CQL_OPCODE_QUERY)
+  , AbstractData(values_count)
+  , query_or_id_(sizeof(int32_t) + query_length)
+  , flags_(0)
+  , page_size_(-1) {
+  // <query> [long string]
+  query_or_id_.encode_long_string(0, query, query_length);
+}
+
+Statement::Statement(const Prepared* prepared)
+  : RoutableRequest(CQL_OPCODE_EXECUTE)
+  , AbstractData(prepared->result()->column_count())
+  , query_or_id_(sizeof(uint16_t) + prepared->id().size())
+  , flags_(0)
+  , page_size_(-1) {
+  // <id> [short bytes] (or [string])
+  const String& id = prepared->id();
+  query_or_id_.encode_string(0, id.data(), id.size());
+  // Inherit settings and keyspace from the prepared statement
+  set_settings(prepared->request_settings());
+  // If the keyspace wasn't explictly set then attempt to set it using the
+  // prepared statement's result metadata.
+  if (keyspace().empty()) {
+    set_keyspace(prepared->result()->keyspace().to_string());
+  }
+}
+
+String Statement::query() const {
+  if (opcode() == CQL_OPCODE_QUERY) {
+    return String(query_or_id_.data() + sizeof(int32_t),
+                  query_or_id_.size() - sizeof(int32_t));
+  }
+  return String();
+}
+
+// Format: <kind><string_or_id><n><value_1>...<value_n>
+// where:
+// <kind> is a [byte]
+// <string_or_id> is a [long string] for <string> and a [short bytes] for <id>
+// <n> is a [short]
+// <value> is a [bytes]
+int32_t Statement::encode_batch(int version, RequestCallback* callback, BufferVec* bufs) const {
+  int32_t length = 0;
+
+  { // <kind> [byte]
+    bufs->push_back(Buffer(sizeof(uint8_t)));
+    Buffer& buf = bufs->back();
+    buf.encode_byte(0, kind());
+    length += sizeof(uint8_t);
+  }
+
+  bufs->push_back(query_or_id_);
+  length += query_or_id_.size();
+
+  { // <n> [short]
+    bufs->push_back(Buffer(sizeof(uint16_t)));
+    Buffer& buf = bufs->back();
+    buf.encode_uint16(0, elements().size());
+    length += sizeof(uint16_t);
+  }
+
+  if (elements().size() > 0) {
+    int32_t result = encode_values(version, callback, bufs);
+    if (result < 0) return result;
+    length += result;
+  }
+
+  return length;
+}
+
+bool Statement::with_keyspace(int version) const {
+  return supports_set_keyspace(version) &&
+      // Execute requests (bound statements) use the keyspace
+      // from the time of prepare.
+      opcode() != CQL_OPCODE_EXECUTE && !keyspace().empty();
+}
+
+// For query statements the format is:
+// <query><consistency><flags><n>
+// where:
+// <query> has the format [long string]
+// <consistency> is a [short]
+// <flags> is a [byte] (or [int] for protocol v5)
+// <n> is a [short]
+//
+// For execute statements the format is:
+// <id><consistency><flags><n>
+// where:
+// <id> has the format [short bytes] (or [string])
+// <consistency> is a [short]
+// <flags> is a [byte] (or [int] for protocol v5)
+// <n> is a [short]
+
+int32_t Statement::encode_query_or_id(BufferVec* bufs) const {
+  bufs->push_back(query_or_id_);
+  return query_or_id_.size();
+}
+
+int32_t Statement::encode_begin(int version, uint16_t element_count,
+                                RequestCallback* callback, BufferVec* bufs) const {
+  int32_t length = 0;
+  size_t query_params_buf_size = 0;
+  int32_t flags = flags_;
+
+  if (callback->skip_metadata()) {
+    flags |= CASS_QUERY_FLAG_SKIP_METADATA;
+  }
+
+  query_params_buf_size += sizeof(uint16_t); // <consistency> [short]
+
+  if (version >= CASS_PROTOCOL_VERSION_V5) {
+    query_params_buf_size += sizeof(int32_t); // <flags> [int]
+  } else {
+    query_params_buf_size += sizeof(uint8_t); // <flags> [byte]
+  }
+
+  if (element_count > 0) {
+    query_params_buf_size += sizeof(uint16_t); // <n> [short]
+    flags |= CASS_QUERY_FLAG_VALUES;
+  }
+
+  if (page_size() > 0) {
+    flags |= CASS_QUERY_FLAG_PAGE_SIZE;
+  }
+
+  if (!paging_state().empty()) {
+    flags |= CASS_QUERY_FLAG_PAGING_STATE;
+  }
+
+  if (callback->serial_consistency() != 0) {
+    flags |= CASS_QUERY_FLAG_SERIAL_CONSISTENCY;
+  }
+
+  if (callback->timestamp() != CASS_INT64_MIN) {
+    flags |= CASS_QUERY_FLAG_DEFAULT_TIMESTAMP;
+  }
+
+  if (with_keyspace(version)) {
+    flags |= CASS_QUERY_FLAG_WITH_KEYSPACE;
+  }
+
+  bufs->push_back(Buffer(query_params_buf_size));
+  length += query_params_buf_size;
+
+  Buffer& buf = bufs->back();
+  size_t pos = buf.encode_uint16(0, callback->consistency());
+
+  if (version >= CASS_PROTOCOL_VERSION_V5) {
+    pos = buf.encode_int32(pos, flags);
+  } else {
+    pos = buf.encode_byte(pos, flags);
+  }
+
+  if (element_count > 0) {
+    buf.encode_uint16(pos, element_count);
+  }
+
+  return length;
+}
+
+// Format: [<value_1>...<value_n>]
+// where:
+// <value> is a [bytes]
+int32_t Statement::encode_values(int version, RequestCallback* callback, BufferVec* bufs) const {
+  int32_t length = 0;
   for (size_t i = 0; i < elements().size(); ++i) {
     const Element& element = elements()[i];
     if (!element.is_unset()) {
-      bufs->push_back(element.get_buffer_cached(version, callback->encoding_cache(), false));
+      bufs->push_back(element.get_buffer());
     } else  {
-      if (version >= 4) {
+      if (version >= CASS_PROTOCOL_VERSION_V4) {
         bufs->push_back(cass::encode_with_length(CassUnset()));
       } else {
-        std::stringstream ss;
+        OStringStream ss;
         ss << "Query parameter at index " << i << " was not set";
         callback->on_error(CASS_ERROR_LIB_PARAMETER_UNSET, ss.str());
         return Request::REQUEST_ERROR_PARAMETER_UNSET;
       }
     }
-    size += bufs->back().size();
+    length += bufs->back().size();
   }
-  return size;
+  return length;
 }
 
-bool Statement::get_routing_key(std::string* routing_key, EncodingCache* cache)  const {
-  if (key_indices_.empty()) return false;
+// Format: [<result_page_size>][<paging_state>][<serial_consistency>][<timestamp>]
+// where:
+// <result_page_size> is a [int]
+// <paging_state> is a [bytes]
+// <serial_consistency> is a [short]
+// <timestamp> is a [long]
+// <keyspace> is a [string]
+int32_t Statement::encode_end(int version, RequestCallback* callback, BufferVec* bufs) const {
+  int32_t length = 0;
+  size_t paging_buf_size = 0;
 
-  if (key_indices_.size() == 1) {
-      assert(key_indices_.front() < elements_count());
-      const AbstractData::Element& element(elements()[key_indices_.front()]);
-      if (element.is_unset() || element.is_null()) {
-        return false;
-      }
-      Buffer buf(element.get_buffer_cached(CASS_HIGHEST_SUPPORTED_PROTOCOL_VERSION, cache, true));
-      routing_key->assign(buf.data() + sizeof(int32_t),
-                          buf.size() - sizeof(int32_t));
+  bool with_keyspace = this->with_keyspace(version);
+
+  if (page_size() > 0) {
+    paging_buf_size += sizeof(int32_t); // [int]
+  }
+
+  if (!paging_state().empty()) {
+    paging_buf_size += sizeof(int32_t) + paging_state().size(); // [bytes]
+  }
+
+  if (callback->serial_consistency() != 0) {
+    paging_buf_size += sizeof(uint16_t); // [short]
+  }
+
+  if (callback->timestamp() != CASS_INT64_MIN) {
+    paging_buf_size += sizeof(int64_t); // [long]
+  }
+
+  if (with_keyspace) {
+    paging_buf_size += sizeof(uint16_t) + keyspace().size();
+  }
+
+  if (paging_buf_size > 0) {
+    bufs->push_back(Buffer(paging_buf_size));
+    length += paging_buf_size;
+
+    Buffer& buf = bufs->back();
+    size_t pos = 0;
+
+    if (page_size() >= 0) {
+      pos = buf.encode_int32(pos, page_size());
+    }
+
+    if (!paging_state().empty()) {
+      pos = buf.encode_bytes(pos, paging_state().data(), paging_state().size());
+    }
+
+    if (callback->serial_consistency() != 0) {
+      pos = buf.encode_uint16(pos, callback->serial_consistency());
+    }
+
+    if (callback->timestamp() != CASS_INT64_MIN) {
+      pos = buf.encode_int64(pos, callback->timestamp());
+    }
+
+    if (with_keyspace) {
+      pos = buf.encode_string(pos, keyspace().data(), keyspace().size());
+    }
+  }
+
+  return length;
+}
+
+bool Statement::calculate_routing_key(const Vector<size_t>& key_indices, String* routing_key) const {
+  if (key_indices.empty()) return false;
+
+  if (key_indices.size() == 1) {
+    assert(key_indices.front() < elements().size());
+    const AbstractData::Element& element(elements()[key_indices.front()]);
+    if (element.is_unset() || element.is_null()) {
+      return false;
+    }
+    Buffer buf(element.get_buffer());
+    routing_key->assign(buf.data() + sizeof(int32_t),
+                        buf.size() - sizeof(int32_t));
   } else {
     size_t length = 0;
 
-    for (std::vector<size_t>::const_iterator i = key_indices_.begin();
-         i != key_indices_.end(); ++i) {
-      assert(*i < elements_count());
+    for (Vector<size_t>::const_iterator i = key_indices.begin();
+         i != key_indices.end(); ++i) {
+      assert(*i < elements().size());
       const AbstractData::Element& element(elements()[*i]);
       if (element.is_unset() || element.is_null()) {
         return false;
       }
-      size_t size = element.get_size(CASS_HIGHEST_SUPPORTED_PROTOCOL_VERSION) - sizeof(int32_t);
+      size_t size = element.get_size() - sizeof(int32_t);
       length += sizeof(uint16_t) + size + 1;
     }
 
     routing_key->clear();
     routing_key->reserve(length);
 
-    for (std::vector<size_t>::const_iterator i = key_indices_.begin();
-         i != key_indices_.end(); ++i) {
+    for (Vector<size_t>::const_iterator i = key_indices.begin();
+         i != key_indices.end(); ++i) {
       const AbstractData::Element& element(elements()[*i]);
-      Buffer buf(element.get_buffer_cached(CASS_HIGHEST_SUPPORTED_PROTOCOL_VERSION, cache, true));
+      Buffer buf(element.get_buffer());
       size_t size = buf.size() - sizeof(int32_t);
 
       char size_buf[sizeof(uint16_t)];

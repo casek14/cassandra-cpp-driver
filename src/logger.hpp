@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@
 
 #include "cassandra.h"
 #include "get_time.hpp"
+#include "string.hpp"
 
 #include <stdarg.h>
 #include <stdio.h>
-#include <string>
 
 namespace cass {
 
@@ -45,15 +45,15 @@ public:
                    const char* format, ...) {
     va_list args;
     va_start(args, format);
-    log(severity, file, line, function, format, args);
+    internal_log(severity, file, line, function, format, args);
     va_end(args);
   }
 
 private:
   ATTR_FORMAT(5, 0)
-  static void log(CassLogLevel severity,
-                  const char* file, int line, const char* function,
-                  const char* format, va_list args);
+  static void internal_log(CassLogLevel severity,
+                           const char* file, int line, const char* function,
+                           const char* format, va_list args);
 
 private:
   static CassLogLevel log_level_;
@@ -102,12 +102,12 @@ private:
 #  define LOG_FUNCTION_ ""
 #endif
 
-#define LOG_CHECK_LEVEL(severity, ...) do {                       \
-  if (severity <= Logger::log_level()) {                          \
-    Logger::log(severity,                                         \
-                 LOG_FILE_, __LINE__, LOG_FUNCTION_,              \
-                 LOG_FIRST_(__VA_ARGS__) LOG_REST_(__VA_ARGS__)); \
-  }                                                               \
+#define LOG_CHECK_LEVEL(severity, ...) do {                            \
+  if (severity <= cass::Logger::log_level()) {                         \
+    cass::Logger::log(severity,                                        \
+                      LOG_FILE_, __LINE__, LOG_FUNCTION_,              \
+                      LOG_FIRST_(__VA_ARGS__) LOG_REST_(__VA_ARGS__)); \
+  }                                                                    \
 } while(0)
 
 #define LOG_CRITICAL(...) LOG_CHECK_LEVEL(CASS_LOG_CRITICAL, __VA_ARGS__)

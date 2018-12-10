@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -65,13 +65,13 @@ struct CassDecimal {
 struct CassDuration {
   CassDuration(cass_int32_t months,
                cass_int32_t days,
-               cass_int32_t nanos)
+               cass_int64_t nanos)
     : months(months)
     , days(days)
     , nanos(nanos) { }
   cass_int32_t months;
   cass_int32_t days;
-  cass_int32_t nanos;
+  cass_int64_t nanos;
 };
 
 } // namespace cass

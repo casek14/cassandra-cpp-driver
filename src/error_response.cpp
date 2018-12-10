@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@
 #include "serialization.hpp"
 
 #include <iomanip>
-#include <sstream>
 
 extern "C" {
 
@@ -38,11 +37,11 @@ CassConsistency cass_error_result_consistency(const CassErrorResult* error_resul
   return error_result->consistency();
 }
 
-cass_int32_t cass_error_result_actual(const CassErrorResult* error_result) {
+cass_int32_t cass_error_result_responses_received(const CassErrorResult* error_result) {
   return error_result->received();
 }
 
-cass_int32_t cass_error_result_required(const CassErrorResult* error_result) {
+cass_int32_t cass_error_result_responses_required(const CassErrorResult* error_result) {
   return error_result->required();
 }
 
@@ -116,92 +115,79 @@ CassError cass_error_result_arg_type(const CassErrorResult* error_result,
 
 namespace cass {
 
-std::string ErrorResponse::error_message() const {
-  std::ostringstream ss;
+String ErrorResponse::error_message() const {
+  OStringStream ss;
   ss << "'" << message().to_string() << "'"
      << " (0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
      << CASS_ERROR(CASS_ERROR_SOURCE_SERVER, code()) << ")";
   return ss.str();
 }
 
-bool ErrorResponse::decode(int version, char* buffer, size_t size) {
-  char* pos = decode_int32(buffer, code_);
-  pos = decode_string(pos, &message_);
+bool ErrorResponse::decode(Decoder& decoder) {
+  decoder.set_type("error");
+  CHECK_RESULT(decoder.decode_int32(code_));
+  CHECK_RESULT(decoder.decode_string(&message_));
 
   switch (code_) {
     case CQL_ERROR_UNAVAILABLE:
-      pos = decode_uint16(pos, cl_);
-      pos = decode_int32(pos, required_);
-      decode_int32(pos, received_);
+      CHECK_RESULT(decoder.decode_uint16(cl_));
+      CHECK_RESULT(decoder.decode_int32(required_));
+      CHECK_RESULT(decoder.decode_int32(received_));
       break;
     case CQL_ERROR_READ_TIMEOUT:
-      pos = decode_uint16(pos, cl_);
-      pos = decode_int32(pos, received_);
-      pos = decode_int32(pos, required_);
-      decode_byte(pos, data_present_);
+      CHECK_RESULT(decoder.decode_uint16(cl_));
+      CHECK_RESULT(decoder.decode_int32(received_));
+      CHECK_RESULT(decoder.decode_int32(required_));
+      CHECK_RESULT(decoder.decode_byte(data_present_));
       break;
     case CQL_ERROR_WRITE_TIMEOUT:
-      pos = decode_uint16(pos, cl_);
-      pos = decode_int32(pos, received_);
-      pos = decode_int32(pos, required_);
-      decode_write_type(pos);
+      CHECK_RESULT(decoder.decode_uint16(cl_));
+      CHECK_RESULT(decoder.decode_int32(received_));
+      CHECK_RESULT(decoder.decode_int32(required_));
+      CHECK_RESULT(decoder.decode_write_type(write_type_));
       break;
     case CQL_ERROR_READ_FAILURE:
-      pos = decode_uint16(pos, cl_);
-      pos = decode_int32(pos, received_);
-      pos = decode_int32(pos, required_);
-      pos = decode_int32(pos, num_failures_);
-      decode_byte(pos, data_present_);
+      CHECK_RESULT(decoder.decode_uint16(cl_));
+      CHECK_RESULT(decoder.decode_int32(received_));
+      CHECK_RESULT(decoder.decode_int32(required_));
+      CHECK_RESULT(decoder.decode_failures(failures_, num_failures_));
+      CHECK_RESULT(decoder.decode_byte(data_present_));
       break;
     case CQL_ERROR_FUNCTION_FAILURE:
-      pos = decode_string(pos, &keyspace_);
-      pos = decode_string(pos, &function_);
-      decode_stringlist(pos, arg_types_);
+      CHECK_RESULT(decoder.decode_string(&keyspace_));
+      CHECK_RESULT(decoder.decode_string(&function_));
+      CHECK_RESULT(decoder.decode_stringlist(arg_types_));
       break;
     case CQL_ERROR_WRITE_FAILURE:
-      pos = decode_uint16(pos, cl_);
-      pos = decode_int32(pos, received_);
-      pos = decode_int32(pos, required_);
-      pos = decode_int32(pos, num_failures_);
-      decode_write_type(pos);
+      CHECK_RESULT(decoder.decode_uint16(cl_));
+      CHECK_RESULT(decoder.decode_int32(received_));
+      CHECK_RESULT(decoder.decode_int32(required_));
+      CHECK_RESULT(decoder.decode_failures(failures_, num_failures_));
+      CHECK_RESULT(decoder.decode_write_type(write_type_));
       break;
     case CQL_ERROR_UNPREPARED:
-      decode_string(pos, &prepared_id_);
+      CHECK_RESULT(decoder.decode_string(&prepared_id_));
       break;
     case CQL_ERROR_ALREADY_EXISTS:
-      pos = decode_string(pos, &keyspace_);
-      pos = decode_string(pos, &table_);
+      CHECK_RESULT(decoder.decode_string(&keyspace_));
+      CHECK_RESULT(decoder.decode_string(&table_));
       break;
   }
+
+  decoder.maybe_log_remaining();
   return true;
 }
 
-void ErrorResponse::decode_write_type(char* pos) {
-  StringRef write_type;
-  decode_string(pos, &write_type);
-  if (write_type == "SIMPLE") {
-    write_type_ = CASS_WRITE_TYPE_SIMPLE;
-  } else if(write_type == "BATCH") {
-    write_type_ = CASS_WRITE_TYPE_BATCH;
-  } else if(write_type == "UNLOGGED_BATCH") {
-    write_type_ = CASS_WRITE_TYPE_UNLOGGED_BATCH;
-  } else if(write_type == "COUNTER") {
-    write_type_ = CASS_WRITE_TYPE_COUNTER;
-  } else if(write_type == "BATCH_LOG") {
-    write_type_ = CASS_WRITE_TYPE_BATCH_LOG;
-  }
-}
-
-bool check_error_or_invalid_response(const std::string& prefix, uint8_t expected_opcode,
-                                     Response* response) {
+bool check_error_or_invalid_response(const String& prefix, uint8_t expected_opcode,
+                                     const Response* response) {
   if (response->opcode() == expected_opcode) {
     return false;
   }
 
-  std::ostringstream ss;
+  OStringStream ss;
   if (response->opcode() == CQL_OPCODE_ERROR) {
     ss << prefix << ": Error response "
-       << static_cast<ErrorResponse*>(response)->error_message();
+       << static_cast<const ErrorResponse*>(response)->error_message();
   } else {
     ss << prefix << ": Unexpected opcode "
        << opcode_to_string(response->opcode());

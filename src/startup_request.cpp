@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -16,15 +16,13 @@
 
 #include "startup_request.hpp"
 
-#include "serialization.hpp"
-
 namespace cass {
 
 int StartupRequest::encode(int version, RequestCallback* callback, BufferVec* bufs) const {
   // <options> [string map]
   size_t length = sizeof(uint16_t);
 
-  std::map<std::string, std::string> options;
+  Map<String, String> options;
   if (!compression_.empty()) {
     const char* key = "COMPRESSION";
     length += sizeof(uint16_t) + strlen(key);
@@ -37,6 +35,14 @@ int StartupRequest::encode(int version, RequestCallback* callback, BufferVec* bu
     length += 2 + strlen(key);
     length += 2 + version_.size();
     options[key] = version_;
+  }
+
+  if (no_compact_enabled_) {
+    const char* key = "NO_COMPACT";
+    const char* value = "true";
+    length += 2 + strlen(key);
+    length += 2 + strlen(value);
+    options[key] = value;
   }
 
   bufs->push_back(Buffer(length));

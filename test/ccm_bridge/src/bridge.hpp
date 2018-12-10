@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 */
+
 #ifndef __CCM_BRIDGE_HPP__
 #define __CCM_BRIDGE_HPP__
 
@@ -21,7 +22,7 @@
 #include "cass_version.hpp"
 #include "deployment_type.hpp"
 #include "dse_credentials_type.hpp"
-#include "socket.hpp"
+#include "tsocket.hpp"
 
 #include <map>
 #include <string>
@@ -42,8 +43,8 @@ typedef struct _LIBSSH2_CHANNEL LIBSSH2_CHANNEL;
 #endif
 
 // Default values
-#define DEFAULT_CASSANDRA_VERSION CassVersion("3.10")
-#define DEFAULT_DSE_VERSION DseVersion("5.0.5")
+#define DEFAULT_CASSANDRA_VERSION CassVersion("3.11.3")
+#define DEFAULT_DSE_VERSION DseVersion("6.0.3")
 #define DEFAULT_USE_GIT false
 #define DEFAULT_USE_INSTALL_DIR false
 #define DEFAULT_USE_DSE false
@@ -258,6 +259,9 @@ namespace CCM {
      * @param data_center_nodes Vector of data center nodes
      * @param with_vnodes True if vnodes tokens should be used; false otherwise
      *                   (default: false)
+     * @param is_password_authenticator True if password authenticator is
+     *                                  enabled; false otherwise
+     *                                  (default: false)
      * @param is_ssl True if SSL should be enabled; false otherwise
      *               (default: false)
      * @param is_client_authentication True if client authentication should be
@@ -266,8 +270,10 @@ namespace CCM {
      * @throws BridgeException
      */
     bool create_cluster(std::vector<unsigned short> data_center_nodes,
-      bool with_vnodes = false, bool is_ssl = false,
-      bool is_client_authentication = false);
+                        bool with_vnodes = false,
+                        bool is_password_authenticator = false,
+                        bool is_ssl = false,
+                        bool is_client_authentication = false);
 
     /**
      * Create a Cassandra cluster
@@ -383,9 +389,17 @@ namespace CCM {
      *
      * @param key_value_pairs Key:Value to update
      * @param is_dse True if key/value pair should update the dse.yaml file;
-     *               otherwise false (default: false)
+     *               otherwise false (default: false; update cassandra.yaml)
+     * @param is_yaml True if key_value_pairs is a YAML string; otherwise false
+     *                (default: false)
+     *                NOTE: key_value_pairs in this instance must be a vector
+     *                      of strings for use with CCM literal YAML updates.
+     *                      These strings are single or multi-line YAML
+     *                      configurations; multi-line YAML must contain EOL
+     *                      marker at the end of each line (e.g. \n)
      */
-    void update_cluster_configuration(std::vector<std::string> key_value_pairs, bool is_dse = false);
+    void update_cluster_configuration(std::vector<std::string> key_value_pairs,
+      bool is_dse = false, bool is_yaml = false);
 
     /**
      * Update the cluster configuration
@@ -393,9 +407,22 @@ namespace CCM {
      * @param key Key to update
      * @param value Value to apply to key configuration
      * @param is_dse True if key/value pair should update the dse.yaml file;
-     *               otherwise false (default: false)
+     *               otherwise false (default: false; update cassandra.yaml)
      */
-    void update_cluster_configuration(const std::string& key, const std::string& value, bool is_dse = false);
+    void update_cluster_configuration(const std::string& key, const std::string& value,
+      bool is_dse = false);
+
+    /**
+     * Update the cluster configuration using a YAML configuration
+     *
+     * @param yaml YAML configuration to apply to the cluster
+     *             NOTE: These strings are single or multi-line YAML
+     *                   configurations; multi-line YAML must contain EOL
+     *                   marker at the end of each line (e.g. \n)
+     * @param is_dse True if yaml configuration should update the dse.yaml file;
+     *               otherwise false (default: false; update cassandra.yaml)
+     */
+    void update_cluster_configuration_yaml(const std::string& yaml, bool is_dse = false);
 
     /**
      * Update the node configuration
@@ -425,24 +452,39 @@ namespace CCM {
     unsigned int add_node(const std::string& data_center = "");
 
     /**
-     * Bootstrap (add and start) a node on the active Cassandra cluster
+     * Bootstrap (add and start) a node on the active cluster
      *
-     * @param jvm_argument JVM argument to apply during node start
-     *                     (default: no JVM argument
+     * @param jvm_arguments JVM arguments to apply during node start
      * @param data_center If provided add the node to the data center; otherwise
      *                    add node normally (default: no data center)
      * @return Node added to cluster
      * @throws BridgeException
      */
-    unsigned int bootstrap_node(const std::string& jvm_argument = "", const std::string& data_center = "");
+    unsigned int bootstrap_node(const std::vector<std::string>& jvm_arguments,
+                                const std::string& data_center = "");
+
+    /**
+     * Bootstrap (add and start) a node on the active cluster
+     *
+     * @param jvm_argument JVM argument to apply during node start
+     *                     (default: no JVM argument)
+     * @param data_center If provided add the node to the data center; otherwise
+     *                    add node normally (default: no data center)
+     * @return Node added to cluster
+     * @throws BridgeException
+     */
+    unsigned int bootstrap_node(const std::string& jvm_argument = "",
+                                const std::string& data_center = "");
 
     /**
      * Decommission a node on the active Cassandra cluster
      *
      * @param node Node to decommission
+     * @oaram is_force True if decommission should be forced; false otherwise
+     *                 (default: false)
      * @return True if node was decommissioned; false otherwise
      */
-    bool decommission_node(unsigned int node);
+    bool decommission_node(unsigned int node, bool is_force = false);
 
     /**
      * Disable binary protocol for a node on the active Cassandra cluster
@@ -494,6 +536,18 @@ namespace CCM {
      */
     void execute_cql_on_node(unsigned int node, const std::string& cql);
 
+    CCM_BRIDGE_DEPRECATED(bool is_dse() { return use_dse_; })
+
+    /**
+     * Force decommission of a node on the active Cassandra cluster
+     *
+     * NOTE: Alias for decommission_node(node, true)
+     *
+     * @param node Node to decommission
+     * @return True if node was decommissioned; false otherwise
+     */
+    bool force_decommission_node(unsigned int node);
+
     /**
      * "Hang up" a node on the active Cassandra cluster (SIGHUP)
      *
@@ -532,7 +586,8 @@ namespace CCM {
      *                      start (default: DEFAULT_JVM_ARGUMENTS)
      * @return True if node is up; false otherwise
      */
-    bool start_node(unsigned int node, std::vector<std::string> jvm_arguments = DEFAULT_JVM_ARGUMENTS);
+    bool start_node(unsigned int node,
+                    const std::vector<std::string>& jvm_arguments = DEFAULT_JVM_ARGUMENTS);
 
     /**
      * Start a node on the active Cassandra cluster with an additional JVM
@@ -542,7 +597,7 @@ namespace CCM {
      * @param jvm_argument JVM argument to apply during node start
      * @return True if node is up; false otherwise
      */
-    bool start_node(unsigned int node, std::string jvm_argument);
+    bool start_node(unsigned int node, const std::string& jvm_argument);
 
     /**
      * Stop a node on the active Cassandra cluster
@@ -908,14 +963,19 @@ namespace CCM {
      * @param cassandra_version Cassandra version being used
      * @param data_center_nodes Vector of nodes for each data center
      * @param with_vnodes True if vnodes are enabled; false otherwise
+     * @param is_password_authenticator True if password authenticator is
+     *                                  enabled; false otherwise
      * @param is_ssl True if SSL is enabled; false otherwise
      * @param is_client_authentication True if client authentication is enabled;
      *                                false otherwise
      * @return Cluster name
      */
     std::string generate_cluster_name(CassVersion cassandra_version,
-      std::vector<unsigned short> data_center_nodes,
-      bool with_vnodes, bool is_ssl, bool is_client_authentication);
+                                      std::vector<unsigned short> data_center_nodes,
+                                      bool with_vnodes,
+                                      bool is_password_authenticator,
+                                      bool is_ssl,
+                                      bool is_client_authentication);
 
     /**
      * Generate the nodes parameter for theCassandra cluster based on the number

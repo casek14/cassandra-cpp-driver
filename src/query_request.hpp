@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2014-2016 DataStax
+  Copyright (c) DataStax, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -20,66 +20,47 @@
 #include "constants.hpp"
 #include "hash_table.hpp"
 #include "statement.hpp"
-
-#include <string>
-#include <vector>
+#include "string.hpp"
+#include "vector.hpp"
 
 namespace cass {
 
 class QueryRequest : public Statement {
 public:
-  struct ValueName : HashTableEntry<ValueName> {
-    ValueName() { }
-
-    ValueName(const std::string& name)
-      : name(name)
-      , buf(sizeof(uint16_t) + name.size()) {
-      buf.encode_string(0, name.data(), name.size());
-    }
-
-    std::string name;
-    Buffer buf;
-  };
-
-  explicit QueryRequest(size_t value_count = 0)
-    : Statement(CQL_OPCODE_QUERY, CASS_BATCH_KIND_QUERY,
-                value_count)
-    , value_names_(value_count) { }
-
-  QueryRequest(const std::string& query,
+  QueryRequest(const String& query,
                size_t value_count = 0)
-    : Statement(CQL_OPCODE_QUERY, CASS_BATCH_KIND_QUERY,
-                value_count)
-    , query_(query)
-    , value_names_(value_count) { }
+    : Statement(query.data(), query.size(), value_count) { }
 
   QueryRequest(const char* query, size_t query_length,
-               size_t value_count = 0)
-    : Statement(CQL_OPCODE_QUERY, CASS_BATCH_KIND_QUERY,
-                value_count)
-    , query_(query, query_length)
-    , value_names_(value_count) { }
+               size_t value_count)
+    : Statement(query, query_length, value_count) { }
 
-  virtual int32_t encode_batch(int version, BufferVec* bufs, RequestCallback* callback) const;
+  virtual int encode(int version, RequestCallback* callback, BufferVec* bufs) const;
 
 private:
-  virtual size_t get_indices(StringRef name,
-                             IndexVec* indices);
+  int32_t encode_values_with_names(int version, RequestCallback* callback, BufferVec* bufs) const;
+
+  virtual size_t get_indices(StringRef name, IndexVec* indices);
 
   virtual const DataType::ConstPtr& get_type(size_t index) const {
     return DataType::NIL;
   }
 
 private:
-  int32_t copy_buffers_with_names(int version, BufferVec* bufs, EncodingCache* cache) const;
+  struct ValueName : HashTableEntry<ValueName> {
+    ValueName() { }
 
-  int encode(int version, RequestCallback* callback, BufferVec* bufs) const;
-  int internal_encode_v1(RequestCallback* callback, BufferVec* bufs) const;
-  int internal_encode(int version, RequestCallback* callback, BufferVec* bufs) const;
+    ValueName(const String& name)
+      : name(name)
+      , buf(sizeof(uint16_t) + name.size()) {
+      buf.encode_string(0, name.data(), name.size());
+    }
 
-private:
-  std::string query_;
-  CaseInsensitiveHashTable<ValueName> value_names_;
+    String name;
+    Buffer buf;
+  };
+  typedef CaseInsensitiveHashTable<ValueName> ValueNameHashTable;
+  ScopedPtr<ValueNameHashTable> value_names_;
 };
 
 } // namespace cass
